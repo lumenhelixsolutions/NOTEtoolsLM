@@ -33,15 +33,19 @@
   },
   "homepage": "https://github.com/notetoolslm/notetoolslm#readme",
   "dependencies": {
-    "express": "^4.18.2",
-    "ws": "^8.14.2",
+    "c8": "^11.0.0",
     "chokidar": "^3.5.3",
-    "notebooklm-sdk": "^0.1.0",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^8.5.2",
+    "helmet": "^8.2.0",
     "js-yaml": "^4.1.0",
+    "notebooklm-sdk": "^0.1.0",
     "playwright": "^1.40.0",
-    "dotenv": "^16.3.1"
+    "swagger-ui-express": "^5.0.1",
+    "ws": "^8.14.2",
+    "yamljs": "^0.3.0"
   },
-  "devDependencies": {},
   "engines": {
     "node": ">=18.0.0"
   }

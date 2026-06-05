@@ -14,12 +14,24 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { spawn } = require('child_process');
+function generateRequestId() {
+  return Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+}
 
 // ─── Third-party ───
-let express, WebSocket, chokidar;
+let express, WebSocket, chokidar, helmet, rateLimit;
 try { express = require('express'); } catch(e) { console.error('[FATAL] express not installed. Run: npm install express'); process.exit(1); }
 try { WebSocket = require('ws'); } catch(e) { console.error('[FATAL] ws not installed. Run: npm install ws'); process.exit(1); }
 try { chokidar = require('chokidar'); } catch(e) { console.warn('[WARN] chokidar not installed. File watcher disabled.'); }
+try { helmet = require('helmet'); } catch(e) { console.warn('[WARN] helmet not installed. Security headers disabled.'); }
+try { rateLimit = require('express-rate-limit'); } catch(e) { console.warn('[WARN] express-rate-limit not installed. Rate limiting disabled.'); }
+
+// ─── Internal modules ───
+const { Logger } = require('./lib/logger');
+const { JobQueue } = require('./lib/queue');
+const { getSdkClient, getCapabilities, resetSdk } = require('./lib/sdk-wrapper');
+
+const logger = new Logger('server');
 
 // ─── SDK ───
 let NotebookLMClient;
@@ -33,22 +45,22 @@ try {
     for(const key of Object.keys(SDK)) {
       if(typeof SDK[key] === 'function' && key !== '__esModule') {
         NotebookLMClient = SDK[key];
-        console.log('[SDK] Found constructor:', key);
+        logger.info('SDK constructor found', { name: key });
         break;
       }
     }
   }
   if(NotebookLMClient) {
-    console.log('[SDK] notebooklm-sdk loaded. Constructor:', NotebookLMClient.name || '(anonymous)');
+    logger.info('notebooklm-sdk loaded', { constructor: NotebookLMClient.name || '(anonymous)' });
   } else {
-    console.warn('[SDK] Could not find a constructor in notebooklm-sdk exports:', Object.keys(SDK));
+    logger.warn('Could not find constructor in notebooklm-sdk exports', { keys: Object.keys(SDK) });
   }
 } catch(e) {
-  console.warn('[WARN] notebooklm-sdk not installed. SDK features disabled. Error:', e.message);
+  logger.warn('notebooklm-sdk not installed', { error: e.message });
 }
 
 let jsyaml;
-try { jsyaml = require('js-yaml'); } catch(e) { console.warn('[WARN] js-yaml not installed. YAML ingestion disabled.'); }
+try { jsyaml = require('js-yaml'); } catch(e) { logger.warn('js-yaml not installed. YAML ingestion disabled.'); }
 
 // ─── Paths ───
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), '.data');
@@ -63,34 +75,100 @@ const PREFABS_PATH = path.join(PUBLIC_DIR, 'prefabs.json');
 // ─── Data Files ───
 const PROJECTS_FILE = path.join(DATA_DIR, 'projects.json');
 const ARTIFACTS_FILE = path.join(DATA_DIR, 'artifacts.json');
-const QUEUE_FILE = path.join(DATA_DIR, 'queue.json');
 
 function loadJSON(file, fallback=[]) {
   try { if(fs.existsSync(file)) return JSON.parse(fs.readFileSync(file,'utf8')); } catch(e){}
   return fallback;
 }
 function saveJSON(file, data) {
-  try { fs.writeFileSync(file, JSON.stringify(data,null,2)); } catch(e){ console.error('[Save Error]', e.message); }
+  try { fs.writeFileSync(file, JSON.stringify(data,null,2)); } catch(e){ logger.error('Save failed', { file, error: e.message }); }
 }
 
 // ─── State ───
 let sdkClient = null;
 let sdkAuthed = false;
-let globalQueue = loadJSON(QUEUE_FILE, []);
 let notebookInventory = [];
 let healthLog = [];
 let wsClients = new Set();
-let activeJobs = new Map();
+
+const jobQueue = new JobQueue(new Logger('queue'));
+
+jobQueue.on('job-created', (job) => broadcast({ type: 'job-created', job }));
+jobQueue.on('job-updated', (job) => broadcast({ type: 'job-updated', job }));
+jobQueue.on('job-completed', (job) => {
+  const artifact = {
+    id: generateId(),
+    jobId: job.id,
+    projectId: job.projectId,
+    notebookId: job.notebookId,
+    title: `${job.prefabName}: ${job.topic}`,
+    type: job.type,
+    status: 'completed',
+    prompt: job.prompt,
+    promptLength: job.promptLength,
+    createdAt: job.createdAt,
+    completedAt: job.completedAt || new Date().toISOString(),
+    size: 0,
+    localPath: ''
+  };
+  const artifacts = loadJSON(ARTIFACTS_FILE, []);
+  artifacts.unshift(artifact);
+  saveJSON(ARTIFACTS_FILE, artifacts);
+  broadcast({ type: 'job-completed', job, artifact });
+  logHealth(`Job completed: ${job.prefabName} - ${job.topic}`);
+});
+jobQueue.on('job-failed', (job) => {
+  broadcast({ type: 'job-failed', job });
+  logHealth(`Job failed: ${job.prefabName} - ${job.error}`);
+});
 
 // ─── Express Setup ───
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// ─── Security Middleware ───
+if (helmet) {
+  app.use(helmet({
+    contentSecurityPolicy: false, // Allow inline scripts for SPA
+    crossOriginEmbedderPolicy: false
+  }));
+  logger.info('Helmet security headers enabled');
+}
+
+if (rateLimit) {
+  app.use(rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 200,
+    message: { error: 'Too many requests, please try again later.' }
+  }));
+  logger.info('Rate limiting enabled');
+}
+
+// CORS
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const allowed = ['http://localhost:3000', 'http://localhost:8080', 'chrome-extension://*'];
+  if (!origin || allowed.some(a => origin.startsWith(a.replace('/*', '')))) {
+    res.header('Access-Control-Allow-Origin', origin || '*');
+  }
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
+
+// Request ID
+app.use((req, res, next) => {
+  req.requestId = generateRequestId();
+  res.header('X-Request-Id', req.requestId);
+  next();
+});
+
 // ─── Static files ───
 if(fs.existsSync(PUBLIC_DIR)) {
   app.use(express.static(PUBLIC_DIR));
-  console.log('[Static] Serving:', PUBLIC_DIR);
+  logger.info('Static files served', { dir: PUBLIC_DIR });
 }
 
 // ─── Helpers ───
@@ -110,12 +188,11 @@ function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
 }
 
-async function getSdkClient() {
+async function getLegacySdkClient() {
   if(sdkClient && sdkAuthed) return sdkClient;
-  if(!NotebookLMClient) throw new Error('notebooklm-sdk not installed. Run: npm install notebooklm-sdk');
+  if(!NotebookLMClient) throw new Error('notebooklm-sdk not installed');
   try {
-    const Client = NotebookLMClient;
-    const client = new Client();
+    const client = new NotebookLMClient();
     await client.notebooks?.list?.();
     sdkClient = client;
     sdkAuthed = true;
@@ -144,10 +221,11 @@ app.get('/api/status', (req, res) => {
     version: require('./package.json').version,
     sdkVersion,
     sdkAuthed,
+    capabilities: getCapabilities(),
     sessionExists,
     notebooks: notebookInventory.length,
-    activeJobs: activeJobs.size,
-    queue: globalQueue.length,
+    activeJobs: jobQueue.active.size,
+    queue: jobQueue.getQueue().filter(j => j.status === 'queued').length,
     platform: os.platform(),
     healthLog: healthLog.slice(0, 10),
     timestamp: new Date().toISOString()
@@ -177,7 +255,8 @@ app.post('/api/auth/sync', async (req, res) => {
 
   child.on('close', async (code) => {
     try {
-      await getSdkClient();
+      await getLegacySdkClient();
+      resetSdk();
       logHealth('Auth sync successful');
       res.json({ success: true, code, stdout, stderr, sdkAuthed: true });
     } catch(e) {
@@ -198,12 +277,11 @@ app.get('/api/prefabs', (req, res) => {
 });
 
 function getEmbeddedPrefabs() {
-  // Prefer external file for easy customization, fallback to embedded
   try {
     if(fs.existsSync(PREFABS_PATH)) {
       return JSON.parse(fs.readFileSync(PREFABS_PATH, 'utf8'));
     }
-  } catch(e) { console.warn('[Prefabs] Could not load external prefabs:', e.message); }
+  } catch(e) { logger.warn('Could not load external prefabs', { error: e.message }); }
 
   return [
     { id: 'deep-dive', name: 'Deep-Dive Podcast', type: 'audio', icon: '🎙️', description: 'Long-form conversational deep-dive', template: 'Create a deep-dive podcast episode about {topic} for {audience}. Use a conversational format with two hosts exploring the subject in depth, citing sources naturally. Target 15-20 minutes. Include an intro hook, segment transitions, and a closing summary with key takeaways.' },
@@ -220,7 +298,7 @@ function getEmbeddedPrefabs() {
 // ─── Fleet ───
 app.get('/api/fleet', async (req, res) => {
   try {
-    const client = await getSdkClient();
+    const client = await getLegacySdkClient();
     const notebooks = await client.notebooks?.list?.() || [];
     notebookInventory = notebooks.map(n => ({
       id: n.id || n.notebookId || generateId(),
@@ -231,7 +309,7 @@ app.get('/api/fleet', async (req, res) => {
     logHealth(`Fleet synced: ${notebookInventory.length} notebooks`);
     res.json(notebookInventory);
   } catch(e) {
-    console.error('[Fleet Error]', e.message);
+    logger.error('Fleet sync failed', { error: e.message });
     res.status(503).json({ error: 'SDK not authenticated', detail: e.message, notebooks: [] });
   }
 });
@@ -285,7 +363,6 @@ app.post('/api/generate', async (req, res) => {
     return res.status(400).json({ error: 'Missing required fields: prefabId, notebookId, topic, audience' });
   }
 
-  // Load prefab
   let prefab;
   try {
     const prefabs = fs.existsSync(PREFABS_PATH)
@@ -297,15 +374,12 @@ app.post('/api/generate', async (req, res) => {
   if(!prefab) prefab = getEmbeddedPrefabs().find(p => p.id === prefabId);
   if(!prefab) return res.status(404).json({ error: 'Prefab not found: ' + prefabId });
 
-  // Inject variables
   let prompt = prefab.template
     .replace(/{topic}/g, topic)
     .replace(/{audience}/g, audience);
   if(prompt.length > 10000) prompt = prompt.substring(0, 10000);
 
-  const jobId = generateId();
-  const job = {
-    id: jobId,
+  const job = jobQueue.enqueue({
     projectId: projectId || '',
     prefabId,
     prefabName: prefab.name,
@@ -313,119 +387,20 @@ app.post('/api/generate', async (req, res) => {
     topic,
     audience,
     type: prefab.type,
-    status: 'queued',
-    progress: 0,
     prompt,
-    promptLength: prompt.length,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-
-  globalQueue.push(job);
-  saveJSON(QUEUE_FILE, globalQueue);
-  activeJobs.set(jobId, job);
-  broadcast({ type: 'job-created', job });
+    promptLength: prompt.length
+  });
 
   res.json({ success: true, job });
-
-  // Process async
-  processJob(job);
 });
-
-async function processJob(job) {
-  try {
-    job.status = 'running';
-    job.progress = 10;
-    job.updatedAt = new Date().toISOString();
-    updateJobInQueue(job);
-    broadcast({ type: 'job-updated', job });
-
-    // Try to push config via SDK
-    try {
-      const client = await getSdkClient();
-      if(client.chat?.setChatConfig) {
-        await client.chat.setChatConfig(job.notebookId, { customInstructions: job.prompt });
-        job.progress = 30;
-        job.status = 'processing';
-      }
-    } catch(e) {
-      console.warn('[SDK Config Push]', e.message);
-      job.sdkError = e.message;
-      job.progress = 30;
-      job.status = 'processing';
-    }
-
-    // Simulate processing steps (replace with real SDK artifact creation)
-    await delay(2000);
-    job.progress = 50;
-    job.updatedAt = new Date().toISOString();
-    updateJobInQueue(job);
-    broadcast({ type: 'job-updated', job });
-
-    await delay(2000);
-    job.progress = 75;
-    updateJobInQueue(job);
-    broadcast({ type: 'job-updated', job });
-
-    await delay(1500);
-    job.progress = 100;
-    job.status = 'completed';
-    job.completedAt = new Date().toISOString();
-    updateJobInQueue(job);
-
-    // Create artifact record
-    const artifact = {
-      id: generateId(),
-      jobId: job.id,
-      projectId: job.projectId,
-      notebookId: job.notebookId,
-      title: `${job.prefabName}: ${job.topic}`,
-      type: job.type,
-      status: 'completed',
-      prompt: job.prompt,
-      promptLength: job.promptLength,
-      createdAt: job.createdAt,
-      completedAt: job.completedAt,
-      size: 0,
-      localPath: ''
-    };
-
-    const artifacts = loadJSON(ARTIFACTS_FILE, []);
-    artifacts.unshift(artifact);
-    saveJSON(ARTIFACTS_FILE, artifacts);
-
-    activeJobs.delete(job.id);
-    broadcast({ type: 'job-completed', job, artifact });
-    logHealth(`Job completed: ${job.prefabName} - ${job.topic}`);
-
-  } catch(e) {
-    job.status = 'failed';
-    job.error = e.message;
-    job.updatedAt = new Date().toISOString();
-    updateJobInQueue(job);
-    activeJobs.delete(job.id);
-    broadcast({ type: 'job-failed', job });
-    logHealth(`Job failed: ${job.prefabName} - ${e.message}`);
-  }
-}
-
-function updateJobInQueue(updatedJob) {
-  const idx = globalQueue.findIndex(j => j.id === updatedJob.id);
-  if(idx !== -1) globalQueue[idx] = updatedJob;
-  saveJSON(QUEUE_FILE, globalQueue);
-}
-
-function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ─── Queue ───
 app.get('/api/queue', (req, res) => {
-  res.json(globalQueue);
+  res.json(jobQueue.getQueue());
 });
 
 app.delete('/api/queue/:id', (req, res) => {
-  globalQueue = globalQueue.filter(j => j.id !== req.params.id);
-  saveJSON(QUEUE_FILE, globalQueue);
-  activeJobs.delete(req.params.id);
+  jobQueue.deleteJob(req.params.id);
   broadcast({ type: 'job-deleted', id: req.params.id });
   res.json({ success: true });
 });
@@ -446,7 +421,7 @@ app.get('/api/artifacts', (req, res) => {
   res.json(artifacts);
 });
 
-// ─── Download artifact (merged from plpv2) ───
+// ─── Download artifact ───
 app.get('/api/artifacts/:id/download', async (req, res) => {
   const artifacts = loadJSON(ARTIFACTS_FILE, []);
   const artifact = artifacts.find(a => a.id === req.params.id);
@@ -467,9 +442,9 @@ app.get('/api/artifacts/:id/download', async (req, res) => {
 app.post('/api/artifacts/scan', async (req, res) => {
   try {
     let client;
-    try { client = await getSdkClient(); }
+    try { client = await getLegacySdkClient(); }
     catch(e) {
-      console.warn('[Scan] SDK not available:', e.message);
+      logger.warn('Scan failed: SDK not available', { error: e.message });
       return res.status(503).json({
         success: false,
         discovered: 0,
@@ -503,7 +478,7 @@ app.post('/api/artifacts/scan', async (req, res) => {
           source: 'api'
         });
       }
-    } catch(e) { console.warn('[Scan] generic list failed:', e.message); }
+    } catch(e) { logger.warn('Scan generic list failed', { error: e.message }); }
 
     const typeMethods = [
       { method: 'listAudio', type: 'audio' },
@@ -550,12 +525,12 @@ app.post('/api/artifacts/scan', async (req, res) => {
     }
 
     const totalCount = allArtifacts.length;
-    console.log(`[Scan] Discovered ${totalCount} artifacts:`, JSON.stringify(counts));
+    logger.info('Scan complete', { discovered: totalCount, counts });
     logHealth(`Scan complete: ${totalCount} artifacts discovered`);
 
     res.json({ success: true, discovered: totalCount, newArtifacts: newArtifacts.length, counts, artifacts: allArtifacts });
   } catch(e) {
-    console.error('[Scan Error]', e);
+    logger.error('Scan failed', { error: e.message });
     res.status(500).json({ error: 'Scan failed', detail: e.message });
   }
 });
@@ -597,7 +572,7 @@ app.post('/api/scrape', async (req, res) => {
       try {
         const url = `https://notebooklm.google.com/notebook/${nb.id}`;
         await page.goto(url, { waitUntil: 'networkidle', timeout: 15000 });
-        await delay(2000);
+        await new Promise(r => setTimeout(r, 2000));
 
         const scraped = await page.evaluate(() => {
           const results = [];
@@ -655,7 +630,7 @@ app.post('/api/scrape', async (req, res) => {
           });
         }
       } catch(e) {
-        console.warn(`[Scrape] Notebook ${nb.id} failed:`, e.message);
+        logger.warn(`Scrape notebook failed`, { notebookId: nb.id, error: e.message });
       }
     }
 
@@ -673,7 +648,7 @@ app.post('/api/scrape', async (req, res) => {
     res.json({ success: true, scraped: allScraped.length, newScraped: newScraped.length, artifacts: allScraped });
 
   } catch(e) {
-    console.error('[Scrape Error]', e);
+    logger.error('Scrape failed', { error: e.message });
     res.status(500).json({ error: 'Scrape failed', detail: e.message });
   }
 });
@@ -825,7 +800,7 @@ app.post('/api/artifacts/:id/store', async (req, res) => {
     const localPath = path.join(typeDir, `${safeName}_${artifact.id.slice(0,6)}${ext}`);
 
     try {
-      const client = await getSdkClient();
+      const client = await getLegacySdkClient();
       const downloadFn = client.artifacts?.download || client.artifacts?.downloadAudio;
       if(typeof downloadFn === 'function' && artifact.source === 'api') {
         const stream = await downloadFn.call(client.artifacts, artifact.id);
@@ -839,7 +814,7 @@ app.post('/api/artifacts/:id/store', async (req, res) => {
         }
       }
     } catch(e) {
-      console.warn('[Store] Download failed, creating placeholder:', e.message);
+      logger.warn('Store download failed, creating placeholder', { artifactId: artifact.id, error: e.message });
       fs.writeFileSync(localPath, JSON.stringify({
         title: artifact.title,
         type: artifact.type,
@@ -873,38 +848,22 @@ app.post('/api/artifacts/:id/rerender', async (req, res) => {
   let prefab = prefabs.find(p => artifact.type === p.type);
   if(!prefab) prefab = prefabs[0];
 
-  res.json({ success: true, message: 'Re-render job queued', artifactId: req.params.id });
+  const topic = req.body?.topic || artifact.title?.split(':')[1]?.trim() || artifact.title || 'Rerender';
+  const audience = req.body?.audience || 'General';
 
-  try {
-    const prompt = prefab.template
-      .replace(/{topic}/g, req.body?.topic || artifact.title)
-      .replace(/{audience}/g, req.body?.audience || 'General');
+  const job = jobQueue.enqueue({
+    projectId: artifact.projectId || '',
+    prefabId: prefab.id,
+    prefabName: prefab.name + ' (Re-render)',
+    notebookId: artifact.notebookId || '',
+    topic,
+    audience,
+    type: prefab.type,
+    prompt: prefab.template.replace(/{topic}/g, topic).replace(/{audience}/g, audience).substring(0, 10000),
+    promptLength: Math.min(prefab.template.length, 10000)
+  });
 
-    const job = {
-      id: generateId(),
-      projectId: artifact.projectId || '',
-      prefabId: prefab.id,
-      prefabName: prefab.name + ' (Re-render)',
-      notebookId: artifact.notebookId || '',
-      topic: req.body?.topic || artifact.title,
-      audience: req.body?.audience || 'General',
-      type: prefab.type,
-      status: 'queued',
-      progress: 0,
-      prompt: prompt.substring(0, 10000),
-      promptLength: Math.min(prompt.length, 10000),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-
-    globalQueue.push(job);
-    saveJSON(QUEUE_FILE, globalQueue);
-    activeJobs.set(job.id, job);
-    broadcast({ type: 'job-created', job });
-    processJob(job);
-  } catch(e) {
-    console.error('[Rerender Error]', e);
-  }
+  res.json({ success: true, message: 'Re-render job queued', artifactId: req.params.id, job });
 });
 
 // ─── Delete single artifact ───
@@ -931,7 +890,7 @@ const possibleHtmlPaths = [
   path.join(process.cwd(), 'index.html')
 ].filter(p => fs.existsSync(p));
 
-console.log('[Static] HTML lookup paths:', possibleHtmlPaths);
+logger.info('HTML lookup paths', { paths: possibleHtmlPaths });
 
 if(possibleHtmlPaths.length > 0) {
   const HTML_FILE = possibleHtmlPaths[0];
@@ -940,11 +899,17 @@ if(possibleHtmlPaths.length > 0) {
     res.sendFile(HTML_FILE);
   });
 } else {
-  console.warn('[Static] No index.html found. Dashboard will not be served.');
+  logger.warn('No index.html found. Dashboard will not be served.');
   app.get('/', (req, res) => {
     res.json({ status: 'NOTEtoolsLM v2 Server Running', dashboard: 'Place index.html in public/ folder', endpoints: ['/api/status', '/api/prefabs', '/api/fleet', '/api/projects', '/api/queue', '/api/artifacts', '/api/artifacts/scan', '/api/scrape', '/api/auth/sync'] });
   });
 }
+
+// ─── Global Error Handler ───
+app.use((err, req, res, next) => {
+  logger.error('Unhandled error', { requestId: req.requestId, error: err.message, stack: err.stack });
+  res.status(500).json({ error: 'Internal server error', requestId: req.requestId });
+});
 
 // ═══════════════════════════════════════════════════════════════
 //  HTTP + WS SERVER
@@ -956,7 +921,7 @@ const wss = new WebSocket.Server({ server, path: '/ws' });
 
 wss.on('connection', (ws, req) => {
   wsClients.add(ws);
-  console.log('[WS] Client connected. Total:', wsClients.size);
+  logger.info('WS client connected', { total: wsClients.size });
   ws.send(JSON.stringify({ type: 'connected', message: 'NOTEtoolsLM v2 real-time feed active' }));
 
   ws.on('message', (data) => {
@@ -971,7 +936,7 @@ wss.on('connection', (ws, req) => {
 
   ws.on('close', () => {
     wsClients.delete(ws);
-    console.log('[WS] Client disconnected. Total:', wsClients.size);
+    logger.info('WS client disconnected', { total: wsClients.size });
   });
 
   ws.on('error', () => wsClients.delete(ws));
@@ -986,17 +951,37 @@ if(chokidar) {
   watcher.on('unlink', (fpath) => {
     broadcast({ type: 'vault-file-removed', path: fpath });
   });
-  console.log('[Watcher] Monitoring:', VAULT_DIR);
+  logger.info('File watcher started', { dir: VAULT_DIR });
 }
 
 // ─── Background Fleet Poll ───
 setInterval(async () => {
   if(!sdkAuthed || notebookInventory.length === 0) return;
   try {
-    const client = await getSdkClient();
+    const client = await getLegacySdkClient();
     // Poll for job status updates across notebooks
   } catch(e) {}
 }, 30000);
+
+// ─── Graceful Shutdown ───
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received, shutting down gracefully');
+  server.close(() => { process.exit(0); });
+});
+
+process.on('SIGINT', () => {
+  logger.info('SIGINT received, shutting down gracefully');
+  server.close(() => { process.exit(0); });
+});
+
+process.on('uncaughtException', (err) => {
+  logger.error('Uncaught exception', { error: err.message, stack: err.stack });
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled rejection', { reason: reason?.message || reason });
+});
 
 // ═══════════════════════════════════════════════════════════════
 //  START
@@ -1004,10 +989,7 @@ setInterval(async () => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`[NOTEtoolsLM v2] Fleet Orchestrator on http://localhost:${PORT}`);
-  console.log(`[Server] WS + REST unified on port ${PORT}`);
-  console.log(`[Data] Projects: ${PROJECTS_FILE}`);
-  console.log(`[Data] Artifacts: ${ARTIFACTS_FILE}`);
-  console.log(`[Data] Queue: ${QUEUE_FILE}`);
-  if(chokidar) console.log(`[Ingestion] Watching: ${INGESTION_DIR}`);
+  logger.info(`Fleet Orchestrator started`, { url: `http://localhost:${PORT}` });
+  logger.info('Data paths', { projects: PROJECTS_FILE, artifacts: ARTIFACTS_FILE });
+  if(chokidar) logger.info('Ingestion watcher active', { dir: INGESTION_DIR });
 });
