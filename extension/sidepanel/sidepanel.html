@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PipelineLM Pro</title>
+<link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-brand">
+      <span class="logo">&#9889;</span>
+      <span>PipelineLM Pro</span>
+    </div>
+    <div class="header-actions">
+      <button class="btn ghost sm" id="btn-scan" title="Scan for artifacts">&#x21bb;</button>
+      <button class="btn ghost sm" id="btn-settings" title="Settings">&#x2699;</button>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <div class="notebook-row">
+      <select class="notebook-select" id="notebook-select">
+        <option value="">All Notebooks</option>
+      </select>
+      <button class="btn primary sm" id="btn-sync" title="Sync with page">Sync</button>
+    </div>
+    <div class="inputs-row" id="prefab-inputs">
+      <input type="text" id="input-topic" placeholder="Topic" />
+      <input type="text" id="input-audience" placeholder="Audience" />
+    </div>
+  </div>
+
+  <!-- Filter Chips -->
+  <div class="chips" id="chips">
+    <button class="chip active" data-filter="all">All <span class="count" id="count-all">0</span></button>
+    <button class="chip" data-filter="audio">&#127909; <span class="count" id="count-audio">0</span></button>
+    <button class="chip" data-filter="video">&#127916; <span class="count" id="count-video">0</span></button>
+    <button class="chip" data-filter="slide_deck">&#128193; <span class="count" id="count-slide_deck">0</span></button>
+    <button class="chip" data-filter="mind_map">&#129504; <span class="count" id="count-mind_map">0</span></button>
+    <button class="chip" data-filter="report">&#128202; <span class="count" id="count-report">0</span></button>
+  </div>
+
+  <!-- Vault Grid -->
+  <div class="vault-container" id="vault">
+    <div class="empty-state" id="vault-empty">
+      <div class="icon">&#128229;</div>
+      <div class="title">No artifacts yet</div>
+      <div class="desc">Open notebooklm.google.com and click Sync, or browse your local vault folder.</div>
+    </div>
+  </div>
+
+  <!-- Inspector Panel -->
+  <div class="inspector" id="inspector">
+    <div class="inspector-header" id="inspector-toggle">
+      <span class="inspector-header-title">&#128203; Inspector</span>
+      <span style="color:var(--fg3);font-size:10px;">&#9660;</span>
+    </div>
+    <div class="inspector-body" id="inspector-body"></div>
+    <div class="inspector-actions" id="inspector-actions"></div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="modal-overlay" id="modal-settings">
+    <div class="modal">
+      <div class="modal-header">
+        <span>Settings</span>
+        <button class="btn ghost sm" id="btn-close-settings">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-row">
+          <div class="modal-label">License Key</div>
+          <input class="modal-input" id="setting-license" placeholder="Enter Pro license key" />
+        </div>
+        <div class="modal-row">
+          <div class="modal-label">Auto-sync on page</div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--fg2);cursor:pointer;">
+            <input type="checkbox" id="setting-autosync" checked style="accent-color:var(--accent);" />
+            Detect new artifacts automatically
+          </label>
+        </div>
+        <div class="modal-row">
+          <div class="modal-label">Vault Folder</div>
+          <input class="modal-input" id="setting-vaultpath" placeholder="~/Downloads/vault-storage/" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="btn-cancel-settings">Cancel</button>
+        <button class="btn primary" id="btn-save-settings">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toasts"></div>
+</div>
+
+<script type="module" src="sidepanel.js"></script>
+</body>
+</html>

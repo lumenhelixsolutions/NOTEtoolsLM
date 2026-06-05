@@ -1,0 +1,55 @@
+{
+  "manifest_version": 3,
+  "name": "NOTEtoolsLM",
+  "version": "1.0.0",
+  "description": "The ultimate open-source orchestration suite for Google NotebookLM — fleet dashboard, vault, and prefab generation.",
+  "default_locale": "en",
+  "minimum_chrome_version": "114",
+  "permissions": [
+    "storage",
+    "downloads",
+    "activeTab",
+    "sidePanel",
+    "alarms",
+    "contextMenus",
+    "scripting"
+  ],
+  "host_permissions": [
+    "*://notebooklm.google.com/*"
+  ],
+  "background": {
+    "service_worker": "background/sw.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "sidepanel/sidepanel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://notebooklm.google.com/*"],
+      "js": ["content/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "NOTEtoolsLM",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["shared/*", "icons/*"],
+      "matches": ["*://notebooklm.google.com/*"]
+    }
+  ]
+}

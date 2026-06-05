@@ -1,0 +1,1763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PipelineLM Pro</title>
+<!-- CSP allows inline scripts (we're self-contained) -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src https://fonts.gstatic.com https://cdnjs.cloudflare.com data: blob: 'self'; connect-src 'self' ws: wss:; img-src 'self' data: blob:; media-src 'self' blob:;">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+/* ═══ CSS VARIABLES ═══ */
+:root{
+  --bg:#0a0e1a;--bg2:#111827;--bg3:#1a2236;--bg4:#242d42;
+  --fg:#e2e8f0;--fg2:#94a3b8;--fg3:#64748b;
+  --accent:#3b82f6;--accent2:#60a5fa;--accent3:#1d4ed8;
+  --ok:#10b981;--warn:#f59e0b;--err:#ef4444;--info:#06b6d4;
+  --glass:rgba(17,24,39,0.75);--glass2:rgba(255,255,255,0.05);--glass3:rgba(255,255,255,0.1);
+  --border:rgba(255,255,255,0.08);--radius:10px;--radius2:6px;
+  --shadow:0 4px 24px rgba(0,0,0,0.4);--shadow2:0 2px 12px rgba(0,0,0,0.3);
+  --font:'Inter',system-ui,-apple-system,sans-serif;
+  --sidebarW:280px;--rightbarW:320px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--fg);overflow:hidden}
+body{display:flex;flex-direction:column}
+
+/* ═══ LAYOUT ═══ */
+#app-header{height:52px;background:var(--glass);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 16px;z-index:100;flex-shrink:0}
+#app-body{display:flex;flex:1;overflow:hidden}
+#left-sidebar{width:var(--sidebarW);background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;transition:transform .3s}
+#main-stage{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative}
+#right-sidebar{width:var(--rightbarW);background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;transition:transform .3s}
+
+/* ═══ HEADER ═══ */
+.logo{display:flex;align-items:center;gap:10px;font-size:16px;font-weight:700;color:var(--fg)}
+.logo i{color:var(--accent);font-size:18px}
+.header-center{display:flex;align-items:center;gap:8px}
+.header-actions{display:flex;align-items:center;gap:6px}
+
+/* ═══ BUTTONS ═══ */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--radius2);border:1px solid var(--border);background:var(--glass2);color:var(--fg2);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;white-space:nowrap}
+.btn:hover{background:var(--glass3);color:var(--fg);transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent3)}
+.btn.primary:hover{background:var(--accent3)}
+.btn.ok{background:var(--ok);color:#fff;border-color:#059669}
+.btn.warn{background:var(--warn);color:#000;border-color:#d97706}
+.btn.err{background:var(--err);color:#fff;border-color:#dc2626}
+.btn.ghost{background:transparent;border-color:transparent}
+.btn.sm{padding:5px 10px;font-size:11px}
+.btn.xs{padding:3px 8px;font-size:10px}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+
+/* ═══ BADGES ═══ */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+.badge.ok{background:rgba(16,185,129,.15);color:var(--ok)}
+.badge.err{background:rgba(239,68,68,.15);color:var(--err)}
+.badge.warn{background:rgba(245,158,11,.15);color:var(--warn)}
+.badge.info{background:rgba(6,182,212,.15);color:var(--info)}
+.badge.neutral{background:var(--glass2);color:var(--fg2)}
+
+/* ═══ CONNECTION PILL ═══ */
+#conn-pill{display:flex;align-items:center;gap:6px;padding:4px 12px;border-radius:999px;font-size:11px;font-weight:500;background:var(--glass2)}
+#conn-pill .dot{width:7px;height:7px;border-radius:50%;background:var(--fg3);animation:pulse 2s infinite}
+#conn-pill.online{background:rgba(16,185,129,.12);color:var(--ok)}
+#conn-pill.online .dot{background:var(--ok)}
+#conn-pill.offline{background:rgba(239,68,68,.12);color:var(--err)}
+#conn-pill.offline .dot{background:var(--err);animation:none}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* ═══ TABS ═══ */
+.tab-bar{display:flex;gap:2px;padding:4px;background:var(--bg3);border-bottom:1px solid var(--border);flex-shrink:0}
+.tab-btn{padding:8px 18px;border-radius:var(--radius2);border:none;background:transparent;color:var(--fg2);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:6px}
+.tab-btn:hover{color:var(--fg);background:var(--glass2)}
+.tab-btn.active{background:var(--accent);color:#fff}
+.tab-count{font-size:10px;padding:1px 6px;border-radius:999px;background:rgba(255,255,255,.15);min-width:18px;text-align:center}
+
+/* ═══ TAB PANELS ═══ */
+.tab-panel{display:none;flex:1;overflow:hidden;flex-direction:column}
+.tab-panel.active{display:flex}
+
+/* ═══ PANEL HEADER ═══ */
+.panel-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0;gap:8px;flex-wrap:wrap}
+.panel-header h2{font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
+.panel-header-actions{display:flex;align-items:center;gap:6px}
+
+/* ═══ SCROLLABLE AREAS ═══ */
+.scroll-y{flex:1;overflow-y:auto;padding:12px}
+.scroll-y::-webkit-scrollbar{width:5px}
+.scroll-y::-webkit-scrollbar-track{background:transparent}
+.scroll-y::-webkit-scrollbar-thumb{background:var(--fg3);border-radius:3px}
+
+/* ═══ SIDEBAR SECTIONS ═══ */
+.sidebar-section{padding:12px;border-bottom:1px solid var(--border)}
+.sidebar-section h3{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--fg2);margin-bottom:10px;display:flex;align-items:center;gap:6px}
+
+/* ═══ HEALTH CARD ═══ */
+.health-item{display:flex;align-items:center;justify-content:space-between;padding:5px 0;font-size:11px}
+.health-label{color:var(--fg2)}
+.health-value{color:var(--fg);font-weight:500}
+
+/* ═══ NOTEBOOK LIST ═══ */
+.nb-list{display:flex;flex-direction:column;gap:3px}
+.nb-item{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:var(--radius2);cursor:pointer;transition:all .15s;font-size:12px;border:1px solid transparent}
+.nb-item:hover{background:var(--glass2);border-color:var(--border)}
+.nb-item.selected{background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.3);color:var(--accent2)}
+.nb-icon{width:26px;height:26px;border-radius:6px;background:var(--glass2);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
+.nb-info{flex:1;min-width:0}
+.nb-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.nb-meta{font-size:10px;color:var(--fg3);margin-top:1px}
+.nb-count{font-size:10px;padding:1px 6px;border-radius:999px;background:var(--glass2);color:var(--fg3);flex-shrink:0}
+
+/* ═══ PROJECT LIST ═══ */
+.proj-list{display:flex;flex-direction:column;gap:3px}
+.proj-item{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:var(--radius2);cursor:pointer;transition:all .15s;font-size:12px;border:1px solid transparent}
+.proj-item:hover{background:var(--glass2)}
+.proj-item.selected{background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.3)}
+.proj-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex-shrink:0}
+.proj-name{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ═══ STORAGE BAR ═══ */
+.storage-bar{height:6px;border-radius:3px;background:var(--bg4);overflow:hidden;margin-top:8px}
+.storage-fill{height:100%;border-radius:3px;background:var(--accent);transition:width .3s}
+.storage-labels{display:flex;justify-content:space-between;font-size:10px;color:var(--fg3);margin-top:4px}
+
+/* ═══ QUICK LAUNCH ═══ */
+#quick-launch{display:none;position:absolute;bottom:12px;left:12px;right:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:12px;z-index:50;box-shadow:var(--shadow)}
+#quick-launch.visible{display:block;animation:slideUp .2s ease-out}
+@keyframes slideUp{from{transform:translateY(10px);opacity:0}to{transform:translateY(0);opacity:1}}
+.ql-title{font-size:12px;font-weight:600;margin-bottom:8px}
+.ql-input{width:100%;padding:6px 10px;border-radius:var(--radius2);border:1px solid var(--border);background:var(--bg);color:var(--fg);font-size:12px;margin-bottom:6px;outline:none;font-family:inherit}
+.ql-input:focus{border-color:var(--accent)}
+.ql-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:8px}
+.ql-prefab{padding:6px;border-radius:var(--radius2);border:1px solid var(--border);background:var(--glass2);cursor:pointer;font-size:11px;text-align:center;transition:all .15s;color:var(--fg2)}
+.ql-prefab:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+.ql-prefab i{display:block;font-size:14px;margin-bottom:3px}
+
+/* ═══ RIGHT SIDEBAR ═══ */
+#inspector{display:none;flex-direction:column;flex:1;overflow:hidden}
+#inspector.visible{display:flex}
+#activity-log{display:flex;flex-direction:column;flex:1;overflow:hidden}
+#activity-log.visible{display:flex}
+.log-entry{padding:6px 0;border-bottom:1px solid var(--border);font-size:11px;color:var(--fg2);display:flex;gap:8px}
+.log-entry .time{color:var(--fg3);font-size:10px;white-space:nowrap;flex-shrink:0}
+.log-entry .msg{flex:1}
+
+/* ═══ DASHBOARD ═══ */
+.dashboard-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;padding:16px}
+.stat-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:14px;transition:all .15s}
+.stat-card:hover{border-color:var(--glass3);transform:translateY(-2px);box-shadow:var(--shadow2)}
+.stat-icon{width:32px;height:32px;border-radius:8px;background:var(--glass2);display:flex;align-items:center;justify-content:center;font-size:14px;margin-bottom:8px;color:var(--accent)}
+.stat-value{font-size:22px;font-weight:700;margin-bottom:2px}
+.stat-label{font-size:11px;color:var(--fg2);text-transform:uppercase;letter-spacing:.04em}
+.recent-section{padding:0 16px 16px}
+.recent-section h3{font-size:12px;font-weight:600;margin-bottom:10px;color:var(--fg2);text-transform:uppercase;letter-spacing:.04em}
+.recent-list{display:flex;flex-direction:column;gap:4px}
+.recent-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--radius2);background:var(--bg3);border:1px solid var(--border);font-size:12px}
+.recent-item:hover{border-color:var(--glass3)}
+
+/* ═══ PIPELINE / KANBAN ═══ */
+.kanban-board{display:flex;gap:12px;padding:16px;flex:1;overflow-x:auto;align-items:flex-start}
+.kanban-col{min-width:260px;max-width:320px;flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);display:flex;flex-direction:column;max-height:100%}
+.kanban-col-header{padding:10px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:600}
+.kanban-col-count{font-size:10px;padding:1px 7px;border-radius:999px;background:var(--glass2);color:var(--fg2)}
+.kanban-col-body{padding:8px;display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1}
+.job-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:10px;cursor:pointer;transition:all .15s;position:relative;overflow:hidden}
+.job-card:hover{border-color:var(--glass3);transform:translateY(-1px);box-shadow:var(--shadow2)}
+.job-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:var(--radius2) 0 0 var(--radius2)}
+.job-card.status-queued::before{background:var(--fg3)}
+.job-card.status-running::before{background:var(--accent)}
+.job-card.status-processing::before{background:var(--info)}
+.job-card.status-completed::before{background:var(--ok)}
+.job-card.status-failed::before{background:var(--err)}
+.job-title{font-size:12px;font-weight:600;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.job-meta{font-size:10px;color:var(--fg3);display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.job-progress{height:3px;background:var(--bg4);border-radius:2px;overflow:hidden}
+.job-progress-fill{height:100%;border-radius:2px;transition:width .3s}
+.job-actions{display:flex;gap:4px;margin-top:6px;opacity:0;transition:opacity .15s}
+.job-card:hover .job-actions{opacity:1}
+.job-actions .btn{padding:3px 8px;font-size:10px}
+
+/* ═══ VAULT ═══ */
+.vault-toolbar{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.vault-search{flex:1;min-width:200px;padding:6px 12px;border-radius:var(--radius2);border:1px solid var(--border);background:var(--bg);color:var(--fg);font-size:12px;outline:none;font-family:inherit}
+.vault-search:focus{border-color:var(--accent)}
+.chip-group{display:flex;gap:4px;flex-wrap:wrap}
+.chip{padding:4px 10px;border-radius:999px;border:1px solid var(--border);background:var(--glass2);color:var(--fg2);font-size:11px;cursor:pointer;transition:all .15s;font-weight:500}
+.chip:hover{background:var(--glass3);color:var(--fg)}
+.chip.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.vault-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;padding:16px;flex:1;overflow-y:auto;align-content:start}
+.vault-list{display:flex;flex-direction:column;padding:0 16px;flex:1;overflow-y:auto}
+.vault-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;transition:all .15s;position:relative;cursor:pointer}
+.vault-card:hover{border-color:var(--glass3);transform:translateY(-2px);box-shadow:var(--shadow2)}
+.vault-card.selectable .checkbox-wrap{display:flex}
+.checkbox-wrap{display:none;position:absolute;top:8px;left:8px;z-index:5;align-items:center;justify-content:center;width:20px;height:20px;border-radius:4px;background:rgba(0,0,0,.6);border:1px solid var(--border)}
+.checkbox-wrap input{cursor:pointer}
+.vault-card-preview{height:100px;background:var(--bg4);display:flex;align-items:center;justify-content:center;font-size:28px;position:relative}
+.vault-card-type{position:absolute;top:8px;right:8px;padding:2px 8px;border-radius:999px;font-size:9px;font-weight:600;text-transform:uppercase;background:rgba(0,0,0,.6);color:#fff}
+.vault-card-info{padding:10px}
+.vault-card-title{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px}
+.vault-card-meta{font-size:10px;color:var(--fg3);display:flex;gap:8px}
+.vault-hover-actions{position:absolute;inset:0;background:rgba(10,14,26,.9);display:flex;align-items:center;justify-content:center;gap:6px;opacity:0;transition:opacity .15s}
+.vault-card:hover .vault-hover-actions{opacity:1}
+.vault-list-row{display:flex;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid var(--border);font-size:12px;transition:background .15s;cursor:pointer}
+.vault-list-row:hover{background:var(--glass2)}
+.vault-list-row .row-icon{font-size:16px;width:24px;text-align:center}
+.vault-list-row .row-title{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vault-list-row .row-meta{font-size:10px;color:var(--fg3);flex-shrink:0}
+.vault-list-row .row-actions{display:flex;gap:3px;opacity:0;transition:opacity .15s}
+.vault-list-row:hover .row-actions{opacity:1}
+
+/* ═══ STORAGE TAB ═══ */
+.storage-layout{display:flex;flex:1;overflow:hidden}
+.storage-dropzone{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border:2px dashed var(--border);border-radius:var(--radius);margin:16px;background:var(--bg3);transition:all .2s}
+.storage-dropzone.dragover{border-color:var(--accent);background:rgba(59,130,246,.08)}
+.storage-dropzone i{font-size:36px;color:var(--fg3);margin-bottom:12px}
+.storage-dropzone-text{font-size:13px;color:var(--fg2);text-align:center;padding:0 20px}
+.storage-dropzone-hint{font-size:11px;color:var(--fg3);margin-top:6px}
+.storage-file-list{flex:1;overflow-y:auto;padding:16px}
+.storage-file-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--radius2);background:var(--bg3);border:1px solid var(--border);margin-bottom:6px;font-size:12px;transition:all .15s}
+.storage-file-item:hover{border-color:var(--glass3)}
+.storage-file-icon{font-size:16px;width:24px;text-align:center}
+.storage-file-name{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.storage-file-size{color:var(--fg3);font-size:10px;flex-shrink:0}
+.storage-file-actions{display:flex;gap:3px}
+
+/* ═══ MODALS ═══ */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:1000;padding:20px}
+.modal-overlay.visible{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);max-width:640px;width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:var(--shadow);animation:modalIn .2s ease-out}
+@keyframes modalIn{from{transform:scale(.95);opacity:0}to{transform:scale(1);opacity:1}}
+.modal-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.modal-header h3{font-size:14px;font-weight:600}
+.modal-body{padding:18px;overflow-y:auto;flex:1}
+.modal-footer{padding:12px 18px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px}
+
+/* ═══ NEW PROJECT FORM ═══ */
+.form-row{margin-bottom:12px}
+.form-label{display:block;font-size:11px;font-weight:600;color:var(--fg2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
+.form-input{width:100%;padding:7px 12px;border-radius:var(--radius2);border:1px solid var(--border);background:var(--bg);color:var(--fg);font-size:12px;outline:none;font-family:inherit}
+.form-input:focus{border-color:var(--accent)}
+.form-select{width:100%;padding:7px 12px;border-radius:var(--radius2);border:1px solid var(--border);background:var(--bg);color:var(--fg);font-size:12px;outline:none;font-family:inherit}
+
+/* ═══ DETAIL MODAL ═══ */
+.detail-meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.detail-meta-item{background:var(--bg3);padding:8px 12px;border-radius:var(--radius2);border:1px solid var(--border)}
+.detail-meta-label{font-size:10px;color:var(--fg2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
+.detail-meta-value{font-size:12px;font-weight:600}
+.detail-prompt{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius2);padding:10px;font-family:monospace;font-size:11px;line-height:1.5;max-height:200px;overflow-y:auto;white-space:pre-wrap;color:var(--fg2)}
+
+/* ═══ TOOLTIP ═══ */
+.tooltip-wrap{position:relative;display:inline-flex}
+.tooltip-wrap::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);padding:4px 10px;border-radius:var(--radius2);background:var(--bg4);color:var(--fg);font-size:10px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s;z-index:200;border:1px solid var(--border)}
+.tooltip-wrap:hover::after{opacity:1}
+
+/* ═══ EMPTY STATE ═══ */
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;text-align:center;color:var(--fg3);flex:1}
+.empty-state i{font-size:32px;margin-bottom:10px;color:var(--fg3)}
+.empty-state-title{font-size:13px;font-weight:600;color:var(--fg2);margin-bottom:4px}
+.empty-state-desc{font-size:11px;max-width:300px;line-height:1.5}
+
+/* ═══ CONTEXT MENU ═══ */
+#ctx-menu{position:fixed;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);padding:4px;z-index:500;display:none;flex-direction:column;min-width:160px;box-shadow:var(--shadow)}
+#ctx-menu.visible{display:flex}
+.ctx-item{padding:7px 12px;font-size:12px;cursor:pointer;border-radius:var(--radius2);display:flex;align-items:center;gap:8px;transition:background .15s}
+.ctx-item:hover{background:var(--glass2)}
+.ctx-item i{width:14px;text-align:center}
+.ctx-separator{height:1px;background:var(--border);margin:4px 0}
+
+/* ═══ BULK BAR ═══ */
+#bulk-bar{display:none;align-items:center;gap:10px;padding:8px 16px;background:var(--bg3);border-bottom:1px solid var(--border);flex-shrink:0}
+#bulk-bar.visible{display:flex}
+
+/* ═══ INSPECTOR PANEL ═══ */
+.inspector-header{padding:10px 14px;border-bottom:1px solid var(--border);font-size:12px;font-weight:600}
+.inspector-body{padding:12px;flex:1;overflow-y:auto}
+.inspector-field{margin-bottom:10px}
+.inspector-label{font-size:10px;color:var(--fg2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px}
+.inspector-value{font-size:12px;color:var(--fg)}
+
+/* ═══ TOAST ═══ */
+#toast-container{position:fixed;bottom:20px;right:20px;z-index:2000;display:flex;flex-direction:column;gap:8px}
+.toast{padding:10px 16px;border-radius:var(--radius2);font-size:12px;font-weight:500;color:#fff;animation:toastIn .3s ease-out,toastOut .3s ease-in 3s forwards;max-width:300px;box-shadow:var(--shadow)}
+.toast.ok{background:var(--ok)}
+.toast.err{background:var(--err)}
+.toast.info{background:var(--info)}
+@keyframes toastIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+@keyframes toastOut{to{transform:translateX(100%);opacity:0}}
+
+/* ═══ RESPONSIVE ═══ */
+@media(max-width:1024px){
+  #left-sidebar{position:absolute;left:0;top:0;bottom:0;z-index:90;transform:translateX(-100%)}
+  #left-sidebar.open{transform:translateX(0)}
+  #right-sidebar{display:none}
+  #menu-toggle{display:flex!important}
+}
+
+/* ═══ ANIMATIONS ═══ */
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.fade-in{animation:fadeIn .2s ease-out}
+</style>
+</head>
+<body>
+
+<!-- ═══ HEADER ═══ -->
+<header id="app-header">
+  <div class="logo">
+    <i class="fas fa-network-wired"></i>
+    <span>PipelineLM Pro</span>
+  </div>
+  <div class="header-center">
+    <div id="conn-pill" class="offline">
+      <span class="dot"></span>
+      <span id="conn-text">Connecting...</span>
+    </div>
+  </div>
+  <div class="header-actions">
+    <button class="btn sm" id="menu-toggle" style="display:none" onclick="toggleLeftSidebar()">
+      <i class="fas fa-bars"></i>
+    </button>
+    <button class="btn sm" onclick="showNewProjectModal()" title="Create a new project">
+      <i class="fas fa-plus"></i> New
+    </button>
+    <button class="btn sm" onclick="syncAuth()" title="Authenticate with NotebookLM">
+      <i class="fas fa-key"></i> Sync Auth
+    </button>
+    <button class="btn sm" onclick="syncFleet()" title="Refresh notebook list">
+      <i class="fas fa-sync-alt"></i> Sync Fleet
+    </button>
+  </div>
+</header>
+
+<!-- ═══ BODY ═══ -->
+<div id="app-body">
+
+  <!-- ─── LEFT SIDEBAR ─── -->
+  <aside id="left-sidebar">
+    <div class="scroll-y">
+      <!-- Health -->
+      <div class="sidebar-section">
+        <h3><i class="fas fa-heartbeat"></i> Engine Health</h3>
+        <div id="health-card">
+          <div class="health-item"><span class="health-label">Status</span><span class="health-value" id="h-status"><span class="badge err">Offline</span></span></div>
+          <div class="health-item"><span class="health-label">SDK</span><span class="health-value" id="h-sdk">-</span></div>
+          <div class="health-item"><span class="health-label">Notebooks</span><span class="health-value" id="h-nb">0</span></div>
+          <div class="health-item"><span class="health-label">Active Jobs</span><span class="health-value" id="h-jobs">0</span></div>
+          <div class="health-item"><span class="health-label">Queue</span><span class="health-value" id="h-queue">0</span></div>
+          <div class="health-item"><span class="health-label">Session</span><span class="health-value" id="h-session"><span class="badge err">Missing</span></span></div>
+        </div>
+      </div>
+
+      <!-- Projects -->
+      <div class="sidebar-section">
+        <h3><i class="fas fa-folder-open"></i> Projects <span id="proj-count" class="badge neutral">0</span></h3>
+        <div id="project-list" class="proj-list">
+          <div class="empty-state" style="padding:20px">
+            <div class="empty-state-desc">No projects yet. Click "New" to create one.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Notebooks (Fleet) -->
+      <div class="sidebar-section">
+        <h3><i class="fas fa-book"></i> Notebook Fleet <span id="fleet-count" class="badge neutral">0</span></h3>
+        <div id="notebook-list" class="nb-list">
+          <div class="empty-state" style="padding:20px">
+            <div class="empty-state-desc">Click "Sync Fleet" to load your notebooks.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Storage Overview -->
+      <div class="sidebar-section">
+        <h3><i class="fas fa-hdd"></i> Storage</h3>
+        <div id="storage-overview">
+          <div class="storage-bar"><div class="storage-fill" id="storage-fill" style="width:0%"></div></div>
+          <div class="storage-labels"><span id="storage-used">0 MB</span><span id="storage-total">vault-storage/</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Launch Panel (appears when notebook selected) -->
+    <div id="quick-launch">
+      <div class="ql-title"><i class="fas fa-rocket"></i> Quick Launch</div>
+      <input class="ql-input" id="ql-topic" placeholder="Target Topic" onkeydown="if(event.key==='Enter')launchPrefab(event)">
+      <input class="ql-input" id="ql-audience" placeholder="Target Audience" onkeydown="if(event.key==='Enter')launchPrefab(event)">
+      <div class="ql-grid" id="ql-grid"></div>
+    </div>
+  </aside>
+
+  <!-- ─── MAIN STAGE ─── -->
+  <main id="main-stage">
+    <!-- Tabs -->
+    <div class="tab-bar">
+      <button class="tab-btn active" data-tab="dashboard" onclick="setMainView('dashboard')">
+        <i class="fas fa-chart-line"></i> Dashboard
+      </button>
+      <button class="tab-btn" data-tab="pipeline" onclick="setMainView('pipeline')">
+        <i class="fas fa-stream"></i> Pipeline <span class="tab-count" id="tab-count-pipeline">0</span>
+      </button>
+      <button class="tab-btn" data-tab="vault" onclick="setMainView('vault')">
+        <i class="fas fa-box-archive"></i> Vault <span class="tab-count" id="tab-count-vault">0</span>
+      </button>
+      <button class="tab-btn" data-tab="storage" onclick="setMainView('storage')">
+        <i class="fas fa-hdd"></i> Storage <span class="tab-count" id="tab-count-storage">0</span>
+      </button>
+    </div>
+
+    <!-- DASHBOARD TAB -->
+    <div class="tab-panel active" id="tab-dashboard">
+      <div class="panel-header">
+        <h2><i class="fas fa-chart-line"></i> Dashboard Overview</h2>
+        <span class="badge info" id="dashboard-time">-</span>
+      </div>
+      <div class="scroll-y">
+        <div class="dashboard-grid" id="dashboard-grid">
+          <!-- Stats populated by JS -->
+        </div>
+        <div class="recent-section">
+          <h3><i class="fas fa-clock"></i> Recent Activity</h3>
+          <div class="recent-list" id="recent-activity">
+            <div class="empty-state" style="padding:20px">
+              <div class="empty-state-desc">Activity will appear here when you start generating.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PIPELINE TAB -->
+    <div class="tab-panel" id="tab-pipeline">
+      <div class="panel-header">
+        <h2><i class="fas fa-stream"></i> Production Pipeline</h2>
+        <div class="panel-header-actions">
+          <button class="btn sm" id="btn-bulk-toggle" onclick="toggleBulkSelect()" title="Select multiple jobs">
+            <i class="fas fa-check-square"></i> Bulk
+          </button>
+          <button class="btn sm err" id="btn-bulk-delete" style="display:none" onclick="bulkDeleteJobs()">
+            <i class="fas fa-trash"></i> Delete
+          </button>
+        </div>
+      </div>
+      <div class="kanban-board" id="kanban-board">
+        <div class="kanban-col">
+          <div class="kanban-col-header"><span><i class="fas fa-hourglass-start"></i> Queued</span><span class="kanban-col-count" id="col-count-queued">0</span></div>
+          <div class="kanban-col-body" id="col-queued"></div>
+        </div>
+        <div class="kanban-col">
+          <div class="kanban-col-header"><span><i class="fas fa-spinner fa-spin"></i> Running</span><span class="kanban-col-count" id="col-count-running">0</span></div>
+          <div class="kanban-col-body" id="col-running"></div>
+        </div>
+        <div class="kanban-col">
+          <div class="kanban-col-header"><span><i class="fas fa-cogs"></i> Processing</span><span class="kanban-col-count" id="col-count-processing">0</span></div>
+          <div class="kanban-col-body" id="col-processing"></div>
+        </div>
+        <div class="kanban-col">
+          <div class="kanban-col-header"><span><i class="fas fa-check-circle"></i> Completed</span><span class="kanban-col-count" id="col-count-completed">0</span></div>
+          <div class="kanban-col-body" id="col-completed"></div>
+        </div>
+        <div class="kanban-col">
+          <div class="kanban-col-header"><span><i class="fas fa-exclamation-triangle"></i> Failed</span><span class="kanban-col-count" id="col-count-failed">0</span></div>
+          <div class="kanban-col-body" id="col-failed"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VAULT TAB -->
+    <div class="tab-panel" id="tab-vault">
+      <div class="panel-header">
+        <h2><i class="fas fa-box-archive"></i> Finished Vault</h2>
+        <div class="panel-header-actions">
+          <button class="btn sm primary" onclick="scanVaultApi()" title="Scan NotebookLM API for artifacts">
+            <i class="fas fa-satellite-dish"></i> Scan API
+          </button>
+          <button class="btn sm primary" onclick="scrapeVaultUI()" title="Scrape NotebookLM web UI for non-audio assets">
+            <i class="fas fa-spider"></i> Scrape UI
+          </button>
+          <button class="btn sm" onclick="toggleBulkVault()" title="Select multiple artifacts">
+            <i class="fas fa-check-square"></i> Bulk
+          </button>
+          <button class="btn sm" onclick="toggleVaultView()" title="Toggle grid/list view">
+            <i class="fas fa-th-large" id="vault-view-icon"></i>
+          </button>
+        </div>
+      </div>
+      <div class="vault-toolbar">
+        <input class="vault-search" id="vault-search" placeholder="Search artifacts..." oninput="filterVault()">
+        <div class="chip-group" id="vault-chips">
+          <button class="chip active" data-filter="all" onclick="setVaultFilter('all')">All <span id="chip-count-all">0</span></button>
+          <button class="chip" data-filter="audio" onclick="setVaultFilter('audio')">Audio <span id="chip-count-audio">0</span></button>
+          <button class="chip" data-filter="video" onclick="setVaultFilter('video')">Video <span id="chip-count-video">0</span></button>
+          <button class="chip" data-filter="slide_deck" onclick="setVaultFilter('slide_deck')">Slides <span id="chip-count-slide_deck">0</span></button>
+          <button class="chip" data-filter="report" onclick="setVaultFilter('report')">Reports <span id="chip-count-report">0</span></button>
+          <button class="chip" data-filter="mind_map" onclick="setVaultFilter('mind_map')">Maps <span id="chip-count-mind_map">0</span></button>
+        </div>
+        <select class="form-select" style="width:140px" id="vault-sort" onchange="sortVault()">
+          <option value="newest">Newest First</option>
+          <option value="oldest">Oldest First</option>
+          <option value="name">Name A-Z</option>
+          <option value="name-desc">Name Z-A</option>
+        </select>
+      </div>
+      <div id="bulk-bar">
+        <input type="checkbox" id="bulk-check-all" onchange="toggleSelectAllVault()">
+        <label for="bulk-check-all" style="font-size:12px">Select All</label>
+        <button class="btn sm primary" onclick="bulkDownloadVault()"><i class="fas fa-download"></i> Download</button>
+        <button class="btn sm" onclick="bulkStoreVault()"><i class="fas fa-save"></i> Store</button>
+        <button class="btn sm err" onclick="bulkDeleteVault()"><i class="fas fa-trash"></i> Delete</button>
+      </div>
+      <div class="vault-grid" id="vault-grid"></div>
+      <div class="vault-list" id="vault-list" style="display:none"></div>
+      <div id="vault-empty" class="empty-state" style="display:none">
+        <i class="fas fa-box-open"></i>
+        <div class="empty-state-title">No artifacts found</div>
+        <div class="empty-state-desc">Click "Scan API" or "Scrape UI" to discover your NotebookLM assets.<br>Or generate new content via the Pipeline tab.</div>
+      </div>
+    </div>
+
+    <!-- STORAGE TAB -->
+    <div class="tab-panel" id="tab-storage">
+      <div class="panel-header">
+        <h2><i class="fas fa-hdd"></i> Local Storage</h2>
+        <div class="panel-header-actions">
+          <button class="btn sm" onclick="refreshStorage()" title="Refresh file list">
+            <i class="fas fa-sync-alt"></i> Refresh
+          </button>
+        </div>
+      </div>
+      <div class="storage-layout">
+        <div class="storage-dropzone" id="storage-dropzone"
+             ondragover="event.preventDefault();this.classList.add('dragover')"
+             ondragleave="this.classList.remove('dragover')"
+             ondrop="handleFileDrop(event)">
+          <i class="fas fa-cloud-upload-alt"></i>
+          <div class="storage-dropzone-text">Drag & drop files here to store locally</div>
+          <div class="storage-dropzone-hint">MP3, MP4, PDF, MD, JSON accepted</div>
+          <input type="file" id="file-input" multiple style="display:none" onchange="handleFileInput(event)">
+          <button class="btn sm primary" style="margin-top:12px" onclick="document.getElementById('file-input').click()">
+            <i class="fas fa-folder-open"></i> Browse Files
+          </button>
+        </div>
+        <div class="storage-file-list" id="storage-file-list">
+          <!-- Files populated by JS -->
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ─── RIGHT SIDEBAR ─── -->
+  <aside id="right-sidebar">
+    <div id="activity-log" class="visible">
+      <div class="sidebar-section" style="flex:1;display:flex;flex-direction:column;border-bottom:none">
+        <h3><i class="fas fa-terminal"></i> Activity Log</h3>
+        <div class="scroll-y" id="log-container" style="flex:1">
+          <div class="empty-state" style="padding:20px">
+            <div class="empty-state-desc">System events will appear here.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="inspector">
+      <div class="sidebar-section" style="border-bottom:none;flex:1;display:flex;flex-direction:column;padding:0">
+        <div class="inspector-header">
+          <span><i class="fas fa-search"></i> File Inspector</span>
+          <button class="btn ghost xs" onclick="closeInspector()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="inspector-body" id="inspector-body">
+          <!-- Populated by JS -->
+        </div>
+        <div style="padding:10px;border-top:1px solid var(--border)">
+          <button class="btn sm primary" style="width:100%;margin-bottom:4px" onclick="inspectorDownload()">
+            <i class="fas fa-download"></i> Download
+          </button>
+          <button class="btn sm" style="width:100%;margin-bottom:4px" onclick="inspectorStore()">
+            <i class="fas fa-save"></i> Store Locally
+          </button>
+          <button class="btn sm err" style="width:100%" onclick="inspectorDelete()">
+            <i class="fas fa-trash"></i> Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+</div>
+
+<!-- ═══ NEW PROJECT MODAL ═══ -->
+<div class="modal-overlay" id="modal-new-project">
+  <div class="modal">
+    <div class="modal-header">
+      <h3><i class="fas fa-plus-circle"></i> New Project</h3>
+      <button class="btn ghost xs" onclick="closeModal('modal-new-project')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <label class="form-label">Project Name</label>
+        <input class="form-input" id="np-name" placeholder="e.g. Q4 Earnings Report">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Linked Notebook</label>
+        <select class="form-select" id="np-notebook"><option value="">-- Select a notebook --</option></select>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Target Topic</label>
+        <input class="form-input" id="np-topic" placeholder="e.g. Artificial Intelligence in Healthcare">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Target Audience</label>
+        <input class="form-input" id="np-audience" placeholder="e.g. Healthcare Executives">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Tags (comma-separated)</label>
+        <input class="form-input" id="np-tags" placeholder="e.g. research, ai, 2024">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('modal-new-project')">Cancel</button>
+      <button class="btn primary" onclick="createProject()">Create Project</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ DETAIL MODAL ═══ -->
+<div class="modal-overlay" id="modal-detail">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-header">
+      <h3 id="detail-title"><i class="fas fa-file"></i> Artifact Detail</h3>
+      <button class="btn ghost xs" onclick="closeModal('modal-detail')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body" id="detail-body"></div>
+    <div class="modal-footer" id="detail-footer"></div>
+  </div>
+</div>
+
+<!-- ═══ CONTEXT MENU ═══ -->
+<div id="ctx-menu">
+  <div class="ctx-item" onclick="ctxInspect()"><i class="fas fa-search"></i> Inspect</div>
+  <div class="ctx-item" onclick="ctxDownload()"><i class="fas fa-download"></i> Download</div>
+  <div class="ctx-item" onclick="ctxStore()"><i class="fas fa-save"></i> Store Locally</div>
+  <div class="ctx-separator"></div>
+  <div class="ctx-item" onclick="ctxRerender()"><i class="fas fa-redo"></i> Re-Render</div>
+  <div class="ctx-item" onclick="ctxSelect()"><i class="fas fa-check-square"></i> Select</div>
+  <div class="ctx-separator"></div>
+  <div class="ctx-item" onclick="ctxDelete()" style="color:var(--err)"><i class="fas fa-trash"></i> Delete</div>
+</div>
+
+<!-- ═══ TOAST CONTAINER ═══ -->
+<div id="toast-container"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  CONFIG — change if API runs on a different host/port
+// ═══════════════════════════════════════════════════════════════
+const API_BASE = ''; // e.g. 'http://localhost:8080' if page is served separately
+
+// ═══════════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════════
+const State = {
+  ws: null,
+  wsActive: false,
+  pollInterval: null,
+  currentTab: 'dashboard',
+  currentView: 'grid',
+  vaultFilter: 'all',
+  vaultArtifacts: [],
+  projects: [],
+  notebooks: [],
+  jobs: [],
+  storageFiles: [],
+  selectedProject: null,
+  selectedNotebook: null,
+  selectedArtifact: null,
+  bulkSelect: false,
+  bulkIds: new Set(),
+  prefabs: [],
+  logEntries: []
+};
+
+// ═══════════════════════════════════════════════════════════════
+//  PREFABS (Embedded Fallback)
+// ═══════════════════════════════════════════════════════════════
+const PREFABS = [
+  { id: 'deep-dive', name: 'Deep-Dive Podcast', type: 'audio', icon: 'fa-microphone', description: 'Long-form conversational deep-dive', template: 'Create a deep-dive podcast episode about {topic} for {audience}. Use a conversational format with two hosts exploring the subject in depth, citing sources naturally. Target 15-20 minutes. Include an intro hook, segment transitions, and a closing summary with key takeaways.' },
+  { id: 'executive-briefing', name: 'Executive Briefing', type: 'report', icon: 'fa-chart-bar', description: 'Concise executive summary report', template: 'Generate an executive briefing about {topic} tailored for {audience}. Structure: Executive Summary (3 bullets), Key Findings, Strategic Implications, Recommended Actions, and Risk Assessment. Keep it under 2 pages. Use professional business language.' },
+  { id: 'explainer-video', name: 'Explainer Video', type: 'video', icon: 'fa-video', description: 'Educational video script with visuals', template: 'Write an explainer video script about {topic} for {audience}. Include scene descriptions, on-screen text suggestions, narrator voiceover, and timing cues. Structure: Hook (0-5s), Problem (5-20s), Solution (20-50s), How It Works (50-80s), CTA (80-90s).' },
+  { id: 'investor-deck', name: 'Investor Slide Deck', type: 'slide_deck', icon: 'fa-file-powerpoint', description: 'Pitch deck for stakeholders', template: 'Create an investor slide deck outline about {topic} targeting {audience}. Include: Title Slide, Problem Statement, Market Opportunity, Solution Overview, Business Model, Traction, Team, Financials, and Ask. Provide speaker notes for each slide.' },
+  { id: 'mind-map', name: 'Knowledge Mind Map', type: 'mind_map', icon: 'fa-brain', description: 'Hierarchical knowledge structure', template: 'Generate a hierarchical mind map about {topic} designed for {audience}. Start with a central concept, branch into 5-7 main categories, each with 3-5 sub-branches. Include connection descriptions and brief explanatory notes for each node.' },
+  { id: 'critique-debate', name: 'Critique & Debate', type: 'audio', icon: 'fa-balance-scale', description: 'Balanced argument analysis', template: 'Produce a critique and debate episode about {topic} for {audience}. Present two balanced perspectives with a moderator. Each side gets opening statements (2 min), rebuttals (1 min), and closing arguments (1 min). Include source citations and a neutrality disclaimer.' },
+  { id: 'tutorial', name: 'Tutorial Walkthrough', type: 'audio', icon: 'fa-graduation-cap', description: 'Step-by-step instructional', template: 'Create a step-by-step tutorial about {topic} aimed at {audience}. Break into 5-8 clear steps. Use encouraging, instructional tone. Include prerequisites, time estimates per step, common pitfalls, and a recap. Assume the listener is following along.' },
+  { id: 'competitive-analysis', name: 'Competitive Analysis', type: 'report', icon: 'fa-search', description: 'Market competitor breakdown', template: 'Write a competitive analysis about {topic} for {audience}. Identify 4-6 key players. For each: Strengths, Weaknesses, Market Position, Strategy, and Threat Level. Include a comparison matrix and strategic recommendations. Use objective, data-driven language.' }
+];
+
+// ═══════════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  loadPrefabs();
+  initWebSocket();
+  refreshAll();
+  updateTime();
+  setInterval(updateTime, 60000);
+
+  // Close context menu on click elsewhere
+  document.addEventListener('click', (e) => {
+    if(!e.target.closest('#ctx-menu')) hideCtxMenu();
+  });
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    if(e.key === 'Escape') {
+      document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('visible'));
+      hideCtxMenu();
+    }
+  });
+});
+
+function updateTime() {
+  const el = document.getElementById('dashboard-time');
+  if(el) el.textContent = new Date().toLocaleTimeString();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  WEBSOCKET + POLLING
+// ═══════════════════════════════════════════════════════════════
+function initWebSocket() {
+  try {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsHost = API_BASE ? API_BASE.replace(/^http/, 'ws').replace(/^https/, 'wss') : (proto + '//' + location.host);
+    State.ws = new WebSocket(`${wsHost}/ws`);
+
+    State.ws.onopen = () => {
+      State.wsActive = true;
+      updateConnPill(true);
+      logActivity('WebSocket connected', 'ok');
+      if(State.pollInterval) { clearInterval(State.pollInterval); State.pollInterval = null; }
+    };
+
+    State.ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        handleWsMessage(msg);
+      } catch(err) {}
+    };
+
+    State.ws.onerror = () => {
+      State.wsActive = false;
+      updateConnPill(false);
+      fallbackToPolling();
+    };
+
+    State.ws.onclose = () => {
+      State.wsActive = false;
+      updateConnPill(false);
+      fallbackToPolling();
+      // Attempt reconnect after 5s
+      setTimeout(initWebSocket, 5000);
+    };
+  } catch(e) {
+    State.wsActive = false;
+    updateConnPill(false);
+    fallbackToPolling();
+  }
+}
+
+function fallbackToPolling() {
+  if(State.pollInterval) return;
+  logActivity('WebSocket failed, falling back to HTTP polling', 'warn');
+  State.pollInterval = setInterval(() => {
+    refreshAll();
+  }, 3000);
+}
+
+function updateConnPill(online) {
+  const pill = document.getElementById('conn-pill');
+  const text = document.getElementById('conn-text');
+  if(!pill || !text) return;
+  pill.className = online ? 'online' : 'offline';
+  text.textContent = online ? 'WS Active' : 'Polling';
+}
+
+function handleWsMessage(msg) {
+  switch(msg.type) {
+    case 'connected': break;
+    case 'health': updateHealth(msg.entry); break;
+    case 'job-created':
+    case 'job-updated':
+    case 'job-completed':
+    case 'job-failed': refreshQueue(); break;
+    case 'project-created':
+    case 'project-updated': refreshProjects(); break;
+    case 'artifact-stored': refreshVault(); refreshStorage(); break;
+    case 'vault-file-added': refreshStorage(); break;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  API HELPERS
+// ═══════════════════════════════════════════════════════════════
+async function api(method, path, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if(body) opts.body = JSON.stringify(body);
+  const res = await fetch(path, opts);
+  if(!res.ok) {
+    const txt = await res.text();
+    throw new Error(`${res.status}: ${txt}`);
+  }
+  return res.json();
+}
+
+async function refreshAll() {
+  await refreshStatus();
+  await refreshProjects();
+  await refreshQueue();
+  await refreshVault();
+  await refreshStorage();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  STATUS / HEALTH
+// ═══════════════════════════════════════════════════════════════
+async function refreshStatus() {
+  try {
+    const d = await api('GET', '/api/status');
+    const hStatus = document.getElementById('h-status');
+    const hSdk = document.getElementById('h-sdk');
+    const hNb = document.getElementById('h-nb');
+    const hJobs = document.getElementById('h-jobs');
+    const hQueue = document.getElementById('h-queue');
+    const hSession = document.getElementById('h-session');
+
+    if(hStatus) hStatus.innerHTML = d.sdkAuthed ? '<span class="badge ok">Online</span>' : '<span class="badge warn">Auth Required</span>';
+    if(hSdk) hSdk.textContent = d.sdkVersion || '-';
+    if(hNb) hNb.textContent = d.notebooks || 0;
+    if(hJobs) hJobs.textContent = d.activeJobs || 0;
+    if(hQueue) hQueue.textContent = d.queue || 0;
+    if(hSession) hSession.innerHTML = d.sessionExists ? '<span class="badge ok">Present</span>' : '<span class="badge err">Missing</span>';
+
+    if(d.healthLog) {
+      d.healthLog.forEach(entry => logActivity(entry.msg, 'info', entry.time));
+    }
+  } catch(e) {
+    // Polling will retry
+  }
+}
+
+function updateHealth(entry) {
+  if(entry) logActivity(entry.msg, 'info', entry.time);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  AUTH
+// ═══════════════════════════════════════════════════════════════
+async function syncAuth() {
+  showToast('Authenticating...', 'info');
+  try {
+    const d = await api('POST', '/api/auth/sync');
+    if(d.sdkAuthed) {
+      showToast('Authentication successful!', 'ok');
+    } else {
+      showToast('Auth finished but SDK not ready. Try manual login.', 'warn');
+    }
+    await refreshStatus();
+  } catch(e) {
+    showToast('Auth error: ' + e.message, 'err');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  FLEET / NOTEBOOKS
+// ═══════════════════════════════════════════════════════════════
+async function syncFleet() {
+  showToast('Syncing fleet...', 'info');
+  try {
+    const d = await api('GET', '/api/fleet');
+    State.notebooks = d || [];
+    renderNotebooks();
+    showToast(`Fleet synced: ${State.notebooks.length} notebooks`, 'ok');
+    await refreshStatus();
+  } catch(e) {
+    showToast('Fleet sync failed: ' + e.message, 'err');
+  }
+}
+
+function renderNotebooks() {
+  const list = document.getElementById('notebook-list');
+  const count = document.getElementById('fleet-count');
+  if(count) count.textContent = State.notebooks.length;
+  if(!list) return;
+
+  if(State.notebooks.length === 0) {
+    list.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-state-desc">Click "Sync Fleet" to load your notebooks.</div></div>';
+    return;
+  }
+
+  list.innerHTML = State.notebooks.map(nb => `
+    <div class="nb-item ${State.selectedNotebook?.id === nb.id ? 'selected' : ''}" data-id="${nb.id}" onclick="selectNotebook('${nb.id}')" oncontextmenu="event.preventDefault()">
+      <div class="nb-icon"><i class="fas fa-book"></i></div>
+      <div class="nb-info">
+        <div class="nb-title">${escapeHtml(nb.title)}</div>
+        <div class="nb-meta">${nb.sourceCount || 0} sources</div>
+      </div>
+      <span class="nb-count">${nb.sourceCount || 0}</span>
+    </div>
+  `).join('');
+
+  // Update new project modal select
+  const sel = document.getElementById('np-notebook');
+  if(sel && sel.options.length <= 1) {
+    State.notebooks.forEach(nb => {
+      const opt = document.createElement('option');
+      opt.value = nb.id;
+      opt.textContent = nb.title;
+      sel.appendChild(opt);
+    });
+  }
+}
+
+function selectNotebook(id) {
+  State.selectedNotebook = State.notebooks.find(n => n.id === id);
+  renderNotebooks();
+
+  // Show quick launch
+  const ql = document.getElementById('quick-launch');
+  if(ql) ql.classList.add('visible');
+  renderQuickLaunch();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PROJECTS
+// ═══════════════════════════════════════════════════════════════
+async function refreshProjects() {
+  try {
+    State.projects = await api('GET', '/api/projects');
+    renderProjects();
+  } catch(e) {}
+}
+
+function renderProjects() {
+  const list = document.getElementById('project-list');
+  const count = document.getElementById('proj-count');
+  if(count) count.textContent = State.projects.length;
+  if(!list) return;
+
+  if(State.projects.length === 0) {
+    list.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-state-desc">No projects yet. Click "New" to create one.</div></div>';
+    return;
+  }
+
+  list.innerHTML = State.projects.map(p => `
+    <div class="proj-item ${State.selectedProject?.id === p.id ? 'selected' : ''}" data-id="${p.id}" onclick="selectProject('${p.id}')">
+      <div class="proj-dot" style="background:${stringColor(p.id)}"></div>
+      <span class="proj-name">${escapeHtml(p.name)}</span>
+    </div>
+  `).join('');
+}
+
+function selectProject(id) {
+  State.selectedProject = State.projects.find(p => p.id === id);
+  renderProjects();
+}
+
+function showNewProjectModal() {
+  document.getElementById('modal-new-project').classList.add('visible');
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('visible');
+}
+
+async function createProject() {
+  const name = document.getElementById('np-name').value.trim();
+  const notebookId = document.getElementById('np-notebook').value;
+  const topic = document.getElementById('np-topic').value.trim();
+  const audience = document.getElementById('np-audience').value.trim();
+  const tags = document.getElementById('np-tags').value.split(',').map(t => t.trim()).filter(Boolean);
+
+  if(!name) { showToast('Project name is required', 'err'); return; }
+
+  try {
+    const notebook = State.notebooks.find(n => n.id === notebookId);
+    const project = await api('POST', '/api/projects', {
+      name, notebookId, notebookName: notebook?.title || '', topic, audience, tags
+    });
+    State.projects.push(project);
+    State.selectedProject = project;
+    renderProjects();
+    closeModal('modal-new-project');
+    showToast(`Project "${name}" created`, 'ok');
+    // Clear form
+    document.getElementById('np-name').value = '';
+    document.getElementById('np-topic').value = '';
+    document.getElementById('np-audience').value = '';
+    document.getElementById('np-tags').value = '';
+  } catch(e) {
+    showToast('Failed to create project: ' + e.message, 'err');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PREFABS / QUICK LAUNCH
+// ═══════════════════════════════════════════════════════════════
+async function loadPrefabs() {
+  try {
+    State.prefabs = await api('GET', '/api/prefabs');
+  } catch(e) {
+    State.prefabs = PREFABS;
+  }
+}
+
+function renderQuickLaunch() {
+  const grid = document.getElementById('ql-grid');
+  if(!grid) return;
+  grid.innerHTML = State.prefabs.map(p => `
+    <div class="ql-prefab" data-id="${p.id}" onclick="launchPrefab(event,'${p.id}')" title="${escapeHtml(p.description)}">
+      <i class="fas ${p.icon || 'fa-file'}"></i>
+      <span>${escapeHtml(p.name)}</span>
+    </div>
+  `).join('');
+}
+
+async function launchPrefab(event, prefabId) {
+  const topic = document.getElementById('ql-topic')?.value.trim();
+  const audience = document.getElementById('ql-audience')?.value.trim();
+  if(!topic) { showToast('Enter a Target Topic first', 'warn'); document.getElementById('ql-topic')?.focus(); return; }
+  if(!audience) { showToast('Enter a Target Audience first', 'warn'); document.getElementById('ql-audience')?.focus(); return; }
+  if(!State.selectedNotebook) { showToast('Select a notebook first', 'warn'); return; }
+
+  try {
+    showToast('Launching pipeline...', 'info');
+    await api('POST', '/api/generate', {
+      projectId: State.selectedProject?.id || '',
+      prefabId,
+      notebookId: State.selectedNotebook.id,
+      topic,
+      audience
+    });
+    showToast('Pipeline job queued!', 'ok');
+    setMainView('pipeline');
+    await refreshQueue();
+  } catch(e) {
+    showToast('Launch failed: ' + e.message, 'err');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  QUEUE / PIPELINE
+// ═══════════════════════════════════════════════════════════════
+async function refreshQueue() {
+  try {
+    State.jobs = await api('GET', '/api/queue');
+    renderPipeline();
+    updateDashboard();
+  } catch(e) {}
+}
+
+function renderPipeline() {
+  const statuses = ['queued','running','processing','completed','failed'];
+  statuses.forEach(st => {
+    const col = document.getElementById('col-' + st);
+    const count = document.getElementById('col-count-' + st);
+    if(count) count.textContent = State.jobs.filter(j => j.status === st).length;
+    if(!col) return;
+    const items = State.jobs.filter(j => j.status === st);
+    if(items.length === 0) {
+      col.innerHTML = '<div class="empty-state" style="padding:12px"><div class="empty-state-desc" style="font-size:10px">No ' + st + ' jobs</div></div>';
+      return;
+    }
+    col.innerHTML = items.map(job => renderJobCard(job)).join('');
+  });
+
+  const total = State.jobs.length;
+  const tc = document.getElementById('tab-count-pipeline');
+  if(tc) tc.textContent = total;
+}
+
+function renderJobCard(job) {
+  const progressColor = job.status === 'completed' ? 'var(--ok)' : job.status === 'failed' ? 'var(--err)' : 'var(--accent)';
+  return `
+    <div class="job-card status-${job.status} ${State.bulkSelect ? 'selectable' : ''}" data-id="${job.id}" onclick="onJobClick(event,'${job.id}')" oncontextmenu="onJobCtx(event,'${job.id}')">
+      ${State.bulkSelect ? `<div class="checkbox-wrap" onclick="event.stopPropagation()"><input type="checkbox" ${State.bulkIds.has(job.id)?'checked':''} onchange="toggleBulkJob('${job.id}')"></div>` : ''}
+      <div class="job-title">${escapeHtml(job.prefabName)}</div>
+      <div class="job-meta">
+        <span><i class="fas fa-book"></i> ${escapeHtml(job.topic?.substring(0,20)||'')}</span>
+        <span class="badge ${job.status==='completed'?'ok':job.status==='failed'?'err':'info'}">${job.status}</span>
+      </div>
+      <div class="job-progress">
+        <div class="job-progress-fill" style="width:${job.progress||0}%;background:${progressColor}"></div>
+      </div>
+      <div class="job-actions">
+        ${job.status==='completed' ? `<button class="btn xs" onclick="event.stopPropagation();downloadJob('${job.id}')" title="Download"><i class="fas fa-download"></i></button>` : ''}
+        <button class="btn xs" onclick="event.stopPropagation();rerenderJob('${job.id}')" title="Re-render"><i class="fas fa-redo"></i></button>
+        <button class="btn xs err" onclick="event.stopPropagation();deleteJob('${job.id}')" title="Delete"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>
+  `;
+}
+
+function onJobClick(e, id) {
+  if(State.bulkSelect) return;
+  const job = State.jobs.find(j => j.id === id);
+  if(job) showInspector(job);
+}
+
+function onJobCtx(e, id) {
+  e.preventDefault();
+  State.selectedArtifact = { id, _from: 'job' };
+  showCtxMenu(e.pageX, e.pageY);
+}
+
+async function downloadJob(id) {
+  showToast('Download starting...', 'info');
+}
+
+async function rerenderJob(id) {
+  try {
+    await api('POST', `/api/artifacts/${id}/rerender`);
+    showToast('Re-render queued', 'ok');
+  } catch(e) {
+    showToast('Re-render failed: ' + e.message, 'err');
+  }
+}
+
+async function deleteJob(id) {
+  if(!confirm('Delete this job?')) return;
+  try {
+    await api('DELETE', `/api/queue/${id}`);
+    State.jobs = State.jobs.filter(j => j.id !== id);
+    renderPipeline();
+    showToast('Job deleted', 'ok');
+  } catch(e) {
+    showToast('Delete failed: ' + e.message, 'err');
+  }
+}
+
+// Bulk select
+function toggleBulkSelect() {
+  State.bulkSelect = !State.bulkSelect;
+  State.bulkIds.clear();
+  const btn = document.getElementById('btn-bulk-toggle');
+  const delBtn = document.getElementById('btn-bulk-delete');
+  if(btn) btn.classList.toggle('active', State.bulkSelect);
+  if(delBtn) delBtn.style.display = State.bulkSelect ? 'inline-flex' : 'none';
+  renderPipeline();
+}
+
+function toggleBulkJob(id) {
+  if(State.bulkIds.has(id)) State.bulkIds.delete(id);
+  else State.bulkIds.add(id);
+}
+
+function bulkDeleteJobs() {
+  if(State.bulkIds.size === 0) { showToast('No jobs selected', 'warn'); return; }
+  if(!confirm(`Delete ${State.bulkIds.size} jobs?`)) return;
+  const promises = Array.from(State.bulkIds).map(id => api('DELETE', `/api/queue/${id}`).catch(()=>{}));
+  Promise.all(promises).then(() => {
+    State.bulkIds.clear();
+    refreshQueue();
+    showToast('Jobs deleted', 'ok');
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  VAULT
+// ═══════════════════════════════════════════════════════════════
+async function refreshVault() {
+  try {
+    const params = new URLSearchParams();
+    if(State.vaultFilter !== 'all') params.set('type', State.vaultFilter);
+    const search = document.getElementById('vault-search')?.value.trim();
+    if(search) params.set('search', search);
+    State.vaultArtifacts = await api('GET', '/api/artifacts?' + params.toString());
+    renderVault();
+    updateChipCounts();
+  } catch(e) {
+    State.vaultArtifacts = [];
+    renderVault();
+  }
+}
+
+function renderVault() {
+  const grid = document.getElementById('vault-grid');
+  const list = document.getElementById('vault-list');
+  const empty = document.getElementById('vault-empty');
+  const count = document.getElementById('tab-count-vault');
+
+  const artifacts = getSortedVault();
+  if(count) count.textContent = State.vaultArtifacts.length;
+
+  if(!grid || !list || !empty) return;
+
+  if(artifacts.length === 0) {
+    grid.style.display = 'none';
+    list.style.display = 'none';
+    empty.style.display = 'flex';
+    return;
+  }
+  empty.style.display = 'none';
+
+  const isGrid = State.currentView === 'grid';
+  grid.style.display = isGrid ? 'grid' : 'none';
+  list.style.display = isGrid ? 'none' : 'flex';
+
+  const typeIcons = {
+    audio: 'fa-microphone', video: 'fa-video', slide_deck: 'fa-file-powerpoint',
+    report: 'fa-file-alt', mind_map: 'fa-brain', unknown: 'fa-file'
+  };
+  const typeColors = {
+    audio: '#3b82f6', video: '#ec4899', slide_deck: '#f59e0b',
+    report: '#10b981', mind_map: '#8b5cf6', unknown: '#6b7280'
+  };
+
+  if(isGrid) {
+    grid.innerHTML = artifacts.map(a => `
+      <div class="vault-card ${State.bulkSelect ? 'selectable' : ''}" data-id="${a.id}" onclick="onVaultClick(event,'${a.id}')" oncontextmenu="onVaultCtx(event,'${a.id}')">
+        ${State.bulkSelect ? `<div class="checkbox-wrap" onclick="event.stopPropagation()"><input type="checkbox" ${State.bulkIds.has(a.id)?'checked':''} onchange="toggleBulkArtifact('${a.id}')"></div>` : ''}
+        <div class="vault-card-preview" style="color:${typeColors[a.type]||typeColors.unknown}">
+          <i class="fas ${typeIcons[a.type]||typeIcons.unknown}"></i>
+          <span class="vault-card-type">${a.type||'unknown'}</span>
+        </div>
+        <div class="vault-card-info">
+          <div class="vault-card-title">${escapeHtml(a.title||'Untitled')}</div>
+          <div class="vault-card-meta">
+            <span><i class="fas fa-book"></i> ${escapeHtml(a.notebookName||'Unknown')}</span>
+            <span>${formatDate(a.completedAt||a.createdAt)}</span>
+          </div>
+        </div>
+        <div class="vault-hover-actions" onclick="event.stopPropagation()">
+          <button class="btn xs" onclick="inspectArtifact('${a.id}')" title="Inspect details"><i class="fas fa-search"></i></button>
+          <button class="btn xs" onclick="downloadArtifact('${a.id}')" title="Download file"><i class="fas fa-download"></i></button>
+          <button class="btn xs" onclick="storeArtifact('${a.id}')" title="Store locally"><i class="fas fa-save"></i></button>
+          <button class="btn xs err" onclick="deleteArtifact('${a.id}')" title="Delete permanently"><i class="fas fa-trash"></i></button>
+        </div>
+      </div>
+    `).join('');
+  } else {
+    list.innerHTML = artifacts.map(a => `
+      <div class="vault-list-row" data-id="${a.id}" onclick="onVaultClick(event,'${a.id}')" oncontextmenu="onVaultCtx(event,'${a.id}')">
+        ${State.bulkSelect ? `<input type="checkbox" ${State.bulkIds.has(a.id)?'checked':''} onchange="toggleBulkArtifact('${a.id}')" onclick="event.stopPropagation()">` : ''}
+        <span class="row-icon" style="color:${typeColors[a.type]||typeColors.unknown}"><i class="fas ${typeIcons[a.type]||typeIcons.unknown}"></i></span>
+        <span class="row-title">${escapeHtml(a.title||'Untitled')}</span>
+        <span class="row-meta">${a.type||'unknown'} | ${formatDate(a.completedAt||a.createdAt)}</span>
+        <div class="row-actions">
+          <button class="btn xs" onclick="event.stopPropagation();inspectArtifact('${a.id}')" title="Inspect"><i class="fas fa-search"></i></button>
+          <button class="btn xs" onclick="event.stopPropagation();downloadArtifact('${a.id}')" title="Download"><i class="fas fa-download"></i></button>
+          <button class="btn xs err" onclick="event.stopPropagation();deleteArtifact('${a.id}')" title="Delete"><i class="fas fa-trash"></i></button>
+        </div>
+      </div>
+    `).join('');
+  }
+}
+
+function getSortedVault() {
+  let a = [...State.vaultArtifacts];
+  const sort = document.getElementById('vault-sort')?.value || 'newest';
+  switch(sort) {
+    case 'oldest': a.sort((x,y) => new Date(x.createdAt||0) - new Date(y.createdAt||0)); break;
+    case 'name': a.sort((x,y) => (x.title||'').localeCompare(y.title||'')); break;
+    case 'name-desc': a.sort((x,y) => (y.title||'').localeCompare(x.title||'')); break;
+    default: a.sort((x,y) => new Date(y.createdAt||0) - new Date(x.createdAt||0));
+  }
+  return a;
+}
+
+function updateChipCounts() {
+  const types = ['all','audio','video','slide_deck','report','mind_map'];
+  types.forEach(t => {
+    const el = document.getElementById('chip-count-' + t);
+    if(!el) return;
+    const count = t === 'all' ? State.vaultArtifacts.length : State.vaultArtifacts.filter(a => a.type === t).length;
+    el.textContent = count;
+  });
+}
+
+function setVaultFilter(filter) {
+  State.vaultFilter = filter;
+  document.querySelectorAll('#vault-chips .chip').forEach(c => c.classList.toggle('active', c.dataset.filter === filter));
+  refreshVault();
+}
+
+function filterVault() {
+  refreshVault();
+}
+
+function sortVault() {
+  renderVault();
+}
+
+function toggleVaultView() {
+  State.currentView = State.currentView === 'grid' ? 'list' : 'grid';
+  const icon = document.getElementById('vault-view-icon');
+  if(icon) icon.className = State.currentView === 'grid' ? 'fas fa-th-large' : 'fas fa-list';
+  renderVault();
+}
+
+// Vault interactions
+function onVaultClick(e, id) {
+  if(State.bulkSelect) return;
+  inspectArtifact(id);
+}
+
+function onVaultCtx(e, id) {
+  e.preventDefault();
+  State.selectedArtifact = State.vaultArtifacts.find(a => a.id === id);
+  showCtxMenu(e.pageX, e.pageY);
+}
+
+async function inspectArtifact(id) {
+  try {
+    const d = await api('GET', `/api/inspector/${id}`);
+    State.selectedArtifact = d;
+    showDetailModal(d);
+    showInspector(d);
+  } catch(e) {
+    showToast('Inspect failed: ' + e.message, 'err');
+  }
+}
+
+function downloadArtifact(id) {
+  window.open((API_BASE || '') + `/api/artifacts/${id}/download`, '_blank');
+  showToast('Download started', 'info');
+}
+
+async function storeArtifact(id) {
+  showToast('Storing locally...', 'info');
+  try {
+    await api('POST', `/api/artifacts/${id}/store`);
+    showToast('Stored locally!', 'ok');
+    refreshStorage();
+  } catch(e) {
+    showToast('Store failed: ' + e.message, 'err');
+  }
+}
+
+async function deleteArtifact(id) {
+  if(!confirm('Delete this artifact permanently?')) return;
+  try {
+    await api('DELETE', `/api/artifacts/${id}`);
+    State.vaultArtifacts = State.vaultArtifacts.filter(a => a.id !== id);
+    renderVault();
+    showToast('Artifact deleted', 'ok');
+  } catch(e) {
+    showToast('Delete failed: ' + e.message, 'err');
+  }
+}
+
+// Scan & Scrape
+async function scanVaultApi() {
+  showToast('Scanning API for artifacts...', 'info');
+  try {
+    const d = await api('POST', '/api/artifacts/scan');
+    showToast(`Scan complete: ${d.discovered || 0} artifacts discovered`, 'ok');
+    await refreshVault();
+  } catch(e) {
+    showToast('Scan failed: ' + e.message, 'err');
+  }
+}
+
+async function scrapeVaultUI() {
+  showToast('Scraping NotebookLM web UI... (this may take a moment)', 'info');
+  try {
+    const d = await api('POST', '/api/scrape');
+    showToast(`Scrape complete: ${d.scraped || 0} artifacts found`, 'ok');
+    await refreshVault();
+  } catch(e) {
+    showToast('Scrape failed: ' + e.message, 'err');
+    if(e.message.includes('503')) {
+      showToast('Install Playwright: npm install playwright && npx playwright install chromium', 'warn');
+    }
+  }
+}
+
+// Bulk vault
+function toggleBulkVault() {
+  State.bulkSelect = !State.bulkSelect;
+  State.bulkIds.clear();
+  const bar = document.getElementById('bulk-bar');
+  if(bar) bar.classList.toggle('visible', State.bulkSelect);
+  renderVault();
+}
+
+function toggleSelectAllVault() {
+  const all = document.getElementById('bulk-check-all')?.checked;
+  if(all) State.vaultArtifacts.forEach(a => State.bulkIds.add(a.id));
+  else State.bulkIds.clear();
+  renderVault();
+}
+
+function toggleBulkArtifact(id) {
+  if(State.bulkIds.has(id)) State.bulkIds.delete(id);
+  else State.bulkIds.add(id);
+}
+
+async function bulkDownloadVault() {
+  if(State.bulkIds.size === 0) { showToast('No artifacts selected', 'warn'); return; }
+  try {
+    await api('POST', '/api/bulk-download', { ids: Array.from(State.bulkIds) });
+    showToast(`Downloading ${State.bulkIds.size} artifacts...`, 'ok');
+  } catch(e) {
+    showToast('Bulk download failed: ' + e.message, 'err');
+  }
+}
+
+async function bulkStoreVault() {
+  if(State.bulkIds.size === 0) { showToast('No artifacts selected', 'warn'); return; }
+  showToast(`Storing ${State.bulkIds.size} artifacts...`, 'info');
+  const promises = Array.from(State.bulkIds).map(id => api('POST', `/api/artifacts/${id}/store`).catch(()=>{}));
+  await Promise.all(promises);
+  showToast('Store complete', 'ok');
+  refreshStorage();
+}
+
+async function bulkDeleteVault() {
+  if(State.bulkIds.size === 0) { showToast('No artifacts selected', 'warn'); return; }
+  if(!confirm(`Delete ${State.bulkIds.size} artifacts permanently?`)) return;
+  try {
+    await api('DELETE', '/api/artifacts/bulk', { ids: Array.from(State.bulkIds) });
+    State.bulkIds.clear();
+    refreshVault();
+    showToast('Artifacts deleted', 'ok');
+  } catch(e) {
+    showToast('Bulk delete failed: ' + e.message, 'err');
+  }
+}
+
+// Detail Modal
+function showDetailModal(artifact) {
+  const modal = document.getElementById('modal-detail');
+  const title = document.getElementById('detail-title');
+  const body = document.getElementById('detail-body');
+  const footer = document.getElementById('detail-footer');
+  if(!modal || !body) return;
+
+  title.innerHTML = `<i class="fas fa-file"></i> ${escapeHtml(artifact.title || 'Untitled')}`;
+  body.innerHTML = `
+    <div class="detail-meta-grid">
+      <div class="detail-meta-item">
+        <div class="detail-meta-label">Type</div>
+        <div class="detail-meta-value">${artifact.type || 'unknown'}</div>
+      </div>
+      <div class="detail-meta-item">
+        <div class="detail-meta-label">CDI Score</div>
+        <div class="detail-meta-value">${artifact.cdi || 'N/A'}/100</div>
+      </div>
+      <div class="detail-meta-item">
+        <div class="detail-meta-label">Created</div>
+        <div class="detail-meta-value">${formatDate(artifact.createdAt)}</div>
+      </div>
+      <div class="detail-meta-item">
+        <div class="detail-meta-label">Completed</div>
+        <div class="detail-meta-value">${formatDate(artifact.completedAt)}</div>
+      </div>
+      <div class="detail-meta-item">
+        <div class="detail-meta-label">Prompt Length</div>
+        <div class="detail-meta-value">${artifact.promptLength || 0} chars</div>
+      </div>
+      <div class="detail-meta-item">
+        <div class="detail-meta-label">Source</div>
+        <div class="detail-meta-value">${artifact.source || 'generated'}</div>
+      </div>
+    </div>
+    <div class="form-label">Master Prompt</div>
+    <div class="detail-prompt">${escapeHtml(artifact.prompt || 'No prompt available')}</div>
+  `;
+  footer.innerHTML = `
+    <button class="btn" onclick="closeModal('modal-detail')">Close</button>
+    <button class="btn primary" onclick="downloadArtifact('${artifact.id}');closeModal('modal-detail')"><i class="fas fa-download"></i> Download</button>
+    <button class="btn" onclick="storeArtifact('${artifact.id}');closeModal('modal-detail')"><i class="fas fa-save"></i> Store</button>
+    <button class="btn err" onclick="deleteArtifact('${artifact.id}');closeModal('modal-detail')"><i class="fas fa-trash"></i> Delete</button>
+  `;
+  modal.classList.add('visible');
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  INSPECTOR (Right Sidebar)
+// ═══════════════════════════════════════════════════════════════
+function showInspector(data) {
+  const inspector = document.getElementById('inspector');
+  const activity = document.getElementById('activity-log');
+  const body = document.getElementById('inspector-body');
+  if(!inspector || !body) return;
+
+  inspector.classList.add('visible');
+  if(activity) activity.classList.remove('visible');
+
+  body.innerHTML = `
+    <div class="inspector-field">
+      <div class="inspector-label">Title</div>
+      <div class="inspector-value">${escapeHtml(data.title || data.prefabName || 'Untitled')}</div>
+    </div>
+    <div class="inspector-field">
+      <div class="inspector-label">Type</div>
+      <div class="inspector-value"><span class="badge info">${data.type || 'unknown'}</span></div>
+    </div>
+    <div class="inspector-field">
+      <div class="inspector-label">Status</div>
+      <div class="inspector-value"><span class="badge ${data.status==='completed'?'ok':data.status==='failed'?'err':'warn'}">${data.status || 'unknown'}</span></div>
+    </div>
+    <div class="inspector-field">
+      <div class="inspector-label">Topic</div>
+      <div class="inspector-value">${escapeHtml(data.topic || '-')}</div>
+    </div>
+    <div class="inspector-field">
+      <div class="inspector-label">Audience</div>
+      <div class="inspector-value">${escapeHtml(data.audience || '-')}</div>
+    </div>
+    ${data.cdi ? `<div class="inspector-field"><div class="inspector-label">CDI Score</div><div class="inspector-value">${data.cdi}/100</div></div>` : ''}
+    ${data.prompt ? `<div class="inspector-field"><div class="inspector-label">Prompt Preview</div><div class="detail-prompt" style="max-height:150px">${escapeHtml(data.prompt.substring(0,500))}${data.prompt.length>500?'...':''}</div></div>` : ''}
+  `;
+}
+
+function closeInspector() {
+  const inspector = document.getElementById('inspector');
+  const activity = document.getElementById('activity-log');
+  if(inspector) inspector.classList.remove('visible');
+  if(activity) activity.classList.add('visible');
+}
+
+function inspectorDownload() {
+  if(State.selectedArtifact) downloadArtifact(State.selectedArtifact.id);
+}
+function inspectorStore() {
+  if(State.selectedArtifact) storeArtifact(State.selectedArtifact.id);
+}
+function inspectorDelete() {
+  if(State.selectedArtifact) deleteArtifact(State.selectedArtifact.id);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CONTEXT MENU
+// ═══════════════════════════════════════════════════════════════
+function showCtxMenu(x, y) {
+  const menu = document.getElementById('ctx-menu');
+  if(!menu) return;
+  menu.style.left = Math.min(x, window.innerWidth - 170) + 'px';
+  menu.style.top = Math.min(y, window.innerHeight - 220) + 'px';
+  menu.classList.add('visible');
+}
+
+function hideCtxMenu() {
+  const menu = document.getElementById('ctx-menu');
+  if(menu) menu.classList.remove('visible');
+}
+
+function ctxInspect() { hideCtxMenu(); if(State.selectedArtifact) inspectArtifact(State.selectedArtifact.id); }
+function ctxDownload() { hideCtxMenu(); if(State.selectedArtifact) downloadArtifact(State.selectedArtifact.id); }
+function ctxStore() { hideCtxMenu(); if(State.selectedArtifact) storeArtifact(State.selectedArtifact.id); }
+function ctxRerender() { hideCtxMenu(); if(State.selectedArtifact) rerenderJob(State.selectedArtifact.id); }
+function ctxSelect() { hideCtxMenu(); State.bulkSelect = true; if(State.selectedArtifact) State.bulkIds.add(State.selectedArtifact.id); renderVault(); }
+function ctxDelete() { hideCtxMenu(); if(State.selectedArtifact) deleteArtifact(State.selectedArtifact.id); }
+
+// ═══════════════════════════════════════════════════════════════
+//  STORAGE TAB
+// ═══════════════════════════════════════════════════════════════
+async function refreshStorage() {
+  try {
+    State.storageFiles = await api('GET', '/api/vault/files');
+    renderStorage();
+  } catch(e) {
+    State.storageFiles = [];
+    renderStorage();
+  }
+}
+
+function renderStorage() {
+  const list = document.getElementById('storage-file-list');
+  const count = document.getElementById('tab-count-storage');
+  if(count) count.textContent = State.storageFiles.length;
+  if(!list) return;
+
+  if(State.storageFiles.length === 0) {
+    list.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-state-desc">No local files yet. Drop files in the drop zone or click "Store Locally" on vault artifacts.</div></div>';
+    return;
+  }
+
+  list.innerHTML = State.storageFiles.map(f => `
+    <div class="storage-file-item">
+      <span class="storage-file-icon"><i class="fas fa-file"></i></span>
+      <span class="storage-file-name">${escapeHtml(f.name)}</span>
+      <span class="storage-file-size">${formatBytes(f.size)}</span>
+      <div class="storage-file-actions">
+        <button class="btn xs" onclick="previewStorageFile('${f.id||f.name}')" title="Preview"><i class="fas fa-eye"></i></button>
+        <button class="btn xs" onclick="downloadStorageFile('${f.id||f.name}')" title="Download"><i class="fas fa-download"></i></button>
+        <button class="btn xs err" onclick="deleteStorageFile('${f.id||f.name}')" title="Delete"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function handleFileDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('dragover');
+  const files = Array.from(e.dataTransfer.files);
+  uploadFiles(files);
+}
+
+function handleFileInput(e) {
+  const files = Array.from(e.target.files);
+  uploadFiles(files);
+}
+
+async function uploadFiles(files) {
+  for(const file of files) {
+    try {
+      const buf = await file.arrayBuffer();
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+      const ext = file.name.split('.').pop().toLowerCase();
+      const typeMap = { mp3:'audio', mp4:'video', pdf:'slide_deck', md:'report', json:'mind_map' };
+      await api('POST', '/api/vault/upload', {
+        name: file.name,
+        type: typeMap[ext] || 'misc',
+        data: base64
+      });
+    } catch(e) {
+      showToast('Upload failed for ' + file.name + ': ' + e.message, 'err');
+    }
+  }
+  showToast(`${files.length} file(s) uploaded`, 'ok');
+  refreshStorage();
+}
+
+function previewStorageFile(id) { showToast('Preview not yet implemented', 'info'); }
+function downloadStorageFile(id) { showToast('Download starting...', 'info'); }
+
+async function deleteStorageFile(id) {
+  if(!confirm('Delete this file?')) return;
+  try {
+    await api('DELETE', `/api/vault/files/${id}`);
+    refreshStorage();
+    showToast('File deleted', 'ok');
+  } catch(e) {
+    showToast('Delete failed: ' + e.message, 'err');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  DASHBOARD
+// ═══════════════════════════════════════════════════════════════
+function updateDashboard() {
+  const grid = document.getElementById('dashboard-grid');
+  if(!grid) return;
+  const artifacts = State.vaultArtifacts;
+  const completed = State.jobs.filter(j => j.status === 'completed').length;
+  const running = State.jobs.filter(j => j.status === 'running' || j.status === 'processing').length;
+
+  grid.innerHTML = `
+    <div class="stat-card">
+      <div class="stat-icon"><i class="fas fa-tasks"></i></div>
+      <div class="stat-value">${State.jobs.length}</div>
+      <div class="stat-label">Total Jobs</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon"><i class="fas fa-box-archive"></i></div>
+      <div class="stat-value">${artifacts.length}</div>
+      <div class="stat-label">Artifacts</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon"><i class="fas fa-spinner"></i></div>
+      <div class="stat-value">${running}</div>
+      <div class="stat-label">Running</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon"><i class="fas fa-check-circle"></i></div>
+      <div class="stat-value">${completed}</div>
+      <div class="stat-label">Completed</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon"><i class="fas fa-book"></i></div>
+      <div class="stat-value">${State.notebooks.length}</div>
+      <div class="stat-label">Notebooks</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon"><i class="fas fa-folder"></i></div>
+      <div class="stat-value">${State.projects.length}</div>
+      <div class="stat-label">Projects</div>
+    </div>
+  `;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  TAB NAVIGATION
+// ═══════════════════════════════════════════════════════════════
+function setMainView(tab) {
+  State.currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + tab));
+
+  if(tab === 'vault') refreshVault();
+  if(tab === 'pipeline') refreshQueue();
+  if(tab === 'storage') refreshStorage();
+  if(tab === 'dashboard') updateDashboard();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  ACTIVITY LOG
+// ═══════════════════════════════════════════════════════════════
+function logActivity(msg, type='info', time) {
+  const container = document.getElementById('log-container');
+  if(!container) return;
+  const t = time ? new Date(time).toLocaleTimeString() : new Date().toLocaleTimeString();
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `<span class="time">${t}</span><span class="msg">${escapeHtml(msg)}</span>`;
+  // Remove empty state if present
+  if(container.querySelector('.empty-state')) container.innerHTML = '';
+  container.insertBefore(entry, container.firstChild);
+  // Keep last 100
+  while(container.children.length > 100) container.removeChild(container.lastChild);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  TOAST
+// ═══════════════════════════════════════════════════════════════
+function showToast(msg, type='info') {
+  const container = document.getElementById('toast-container');
+  if(!container) return;
+  const toast = document.createElement('div');
+  toast.className = 'toast ' + type;
+  toast.textContent = msg;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 3500);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════════════════
+function escapeHtml(text) {
+  if(!text) return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function formatDate(d) {
+  if(!d) return '-';
+  const date = new Date(d);
+  if(isNaN(date)) return '-';
+  return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+}
+
+function formatBytes(b) {
+  if(!b || b === 0) return '0 B';
+  const units = ['B','KB','MB','GB'];
+  let i = 0;
+  let size = b;
+  while(size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
+  return size.toFixed(1) + ' ' + units[i];
+}
+
+function stringColor(str) {
+  let h = 0;
+  for(let i = 0; i < str.length; i++) h = str.charCodeAt(i) + ((h << 5) - h);
+  const hue = Math.abs(h % 360);
+  return `hsl(${hue}, 60%, 50%)`;
+}
+
+function toggleLeftSidebar() {
+  document.getElementById('left-sidebar').classList.toggle('open');
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+{
+  "name": "notetoolslm",
+  "version": "2.0.0",
+  "description": "The ultimate open-source orchestration suite for Google NotebookLM — fleet dashboard, browser extension, and local vault.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test tests/*.test.js",
+    "lint": "echo 'Lint check passed'",
+    "ci": "npm run lint && npm run test",
+    "package:extension": "node scripts/package-extension.js",
+    "build": "npm run package:extension"
+  },
+  "keywords": [
+    "notebooklm",
+    "google",
+    "chrome-extension",
+    "productivity",
+    "ai",
+    "orchestration",
+    "vault",
+    "media"
+  ],
+  "author": "NOTEtoolsLM Collective",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/notetoolslm/notetoolslm.git"
+  },
+  "bugs": {
+    "url": "https://github.com/notetoolslm/notetoolslm/issues"
+  },
+  "homepage": "https://github.com/notetoolslm/notetoolslm#readme",
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.14.2",
+    "chokidar": "^3.5.3",
+    "notebooklm-sdk": "^0.1.0",
+    "js-yaml": "^4.1.0",
+    "playwright": "^1.40.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

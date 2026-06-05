@@ -1,0 +1,10 @@
+{
+  "extName": {
+    "message": "NOTEtoolsLM",
+    "description": "Extension name"
+  },
+  "extDesc": {
+    "message": "Manage and view your entire NotebookLM media production across all notebooks",
+    "description": "Extension description"
+  }
+}
