@@ -1,0 +1,433 @@
+openapi: 3.0.3
+info:
+  title: NOTEtoolsLM v2 API
+  description: Fleet Orchestrator for Google NotebookLM
+  version: 2.0.0-beta
+  contact:
+    name: NOTEtoolsLM Collective
+servers:
+  - url: http://localhost:3000
+    description: Local development
+paths:
+  /api/status:
+    get:
+      summary: Server health and capabilities
+      operationId: getStatus
+      responses:
+        '200':
+          description: Status object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+  /api/auth/sync:
+    post:
+      summary: Sync NotebookLM SDK authentication
+      operationId: syncAuth
+      responses:
+        '200':
+          description: Auth result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  sdkAuthed: { type: boolean }
+  /api/prefabs:
+    get:
+      summary: List content generation prefabs
+      operationId: getPrefabs
+      responses:
+        '200':
+          description: Array of prefabs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Prefab'
+  /api/fleet:
+    get:
+      summary: List all notebooks
+      operationId: getFleet
+      responses:
+        '200':
+          description: Array of notebooks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Notebook'
+        '503':
+          description: SDK not authenticated
+  /api/projects:
+    get:
+      summary: List projects
+      operationId: getProjects
+      responses:
+        '200':
+          description: Array of projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Project'
+    post:
+      summary: Create a project
+      operationId: createProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectInput'
+      responses:
+        '200':
+          description: Created project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+  /api/projects/{id}:
+    put:
+      summary: Update a project
+      operationId: updateProject
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectInput'
+      responses:
+        '200':
+          description: Updated project
+        '404':
+          description: Project not found
+    delete:
+      summary: Delete a project
+      operationId: deleteProject
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Success
+  /api/generate:
+    post:
+      summary: Generate content from a prefab
+      operationId: generateContent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateInput'
+      responses:
+        '200':
+          description: Enqueued job
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  job:
+                    $ref: '#/components/schemas/Job'
+        '400':
+          description: Missing required fields
+  /api/queue:
+    get:
+      summary: List all jobs
+      operationId: getQueue
+      responses:
+        '200':
+          description: Array of jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Job'
+  /api/queue/{id}:
+    delete:
+      summary: Cancel/delete a job
+      operationId: deleteJob
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Success
+  /api/artifacts:
+    get:
+      summary: List artifacts
+      operationId: getArtifacts
+      parameters:
+        - name: type
+          in: query
+          schema: { type: string }
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: projectId
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Array of artifacts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Artifact'
+  /api/artifacts/scan:
+    post:
+      summary: Scan NotebookLM for artifacts via SDK
+      operationId: scanArtifacts
+      responses:
+        '200':
+          description: Scan result
+        '503':
+          description: SDK not available
+  /api/artifacts/{id}/download:
+    get:
+      summary: Download an artifact
+      operationId: downloadArtifact
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: File download
+        '404':
+          description: Artifact not found
+  /api/artifacts/{id}/store:
+    post:
+      summary: Store artifact locally
+      operationId: storeArtifact
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Stored artifact
+  /api/artifacts/{id}/rerender:
+    post:
+      summary: Re-render an artifact
+      operationId: rerenderArtifact
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Re-render queued
+  /api/artifacts/{id}:
+    delete:
+      summary: Delete an artifact
+      operationId: deleteArtifact
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Success
+  /api/scrape:
+    post:
+      summary: Scrape NotebookLM UI with Playwright
+      operationId: scrapeUI
+      responses:
+        '200':
+          description: Scrape result
+        '503':
+          description: Playwright not installed
+  /api/inspector/{artifactId}:
+    get:
+      summary: Get artifact inspector details
+      operationId: inspectArtifact
+      parameters:
+        - name: artifactId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Inspector data
+        '404':
+          description: Not found
+  /api/vault/files:
+    get:
+      summary: List vault files
+      operationId: getVaultFiles
+      responses:
+        '200':
+          description: Array of files
+  /api/vault/store:
+    post:
+      summary: Store artifact in vault
+      operationId: storeInVault
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                artifactId: { type: string }
+      responses:
+        '200':
+          description: Success
+  /api/vault/upload:
+    post:
+      summary: Upload file to vault
+      operationId: uploadToVault
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                type: { type: string }
+                data: { type: string, description: base64 }
+      responses:
+        '200':
+          description: Success
+  /api/bulk-download:
+    post:
+      summary: Bulk download artifacts
+      operationId: bulkDownload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids: { type: array, items: { type: string } }
+      responses:
+        '200':
+          description: Artifacts list
+  /api/artifacts/bulk:
+    delete:
+      summary: Bulk delete artifacts
+      operationId: bulkDelete
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids: { type: array, items: { type: string } }
+      responses:
+        '200':
+          description: Delete result
+components:
+  schemas:
+    Status:
+      type: object
+      properties:
+        status: { type: string }
+        version: { type: string }
+        sdkVersion: { type: string }
+        sdkAuthed: { type: boolean }
+        notebooks: { type: integer }
+        activeJobs: { type: integer }
+        queue: { type: integer }
+        platform: { type: string }
+        timestamp: { type: string, format: date-time }
+    Prefab:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        type: { type: string }
+        icon: { type: string }
+        description: { type: string }
+        template: { type: string }
+    Notebook:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        sourceCount: { type: integer }
+        updatedAt: { type: string, format: date-time }
+    Project:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        notebookId: { type: string }
+        notebookName: { type: string }
+        topic: { type: string }
+        audience: { type: string }
+        tags: { type: array, items: { type: string } }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ProjectInput:
+      type: object
+      properties:
+        name: { type: string }
+        notebookId: { type: string }
+        notebookName: { type: string }
+        topic: { type: string }
+        audience: { type: string }
+        tags: { type: array, items: { type: string } }
+    GenerateInput:
+      type: object
+      required: [prefabId, notebookId, topic, audience]
+      properties:
+        projectId: { type: string }
+        prefabId: { type: string }
+        notebookId: { type: string }
+        topic: { type: string }
+        audience: { type: string }
+    Job:
+      type: object
+      properties:
+        id: { type: string }
+        status: { type: string, enum: [queued, running, processing, completed, failed] }
+        progress: { type: integer }
+        prefabName: { type: string }
+        topic: { type: string }
+        type: { type: string }
+        promptLength: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time }
+    Artifact:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        type: { type: string }
+        notebookId: { type: string }
+        notebookName: { type: string }
+        status: { type: string }
+        prompt: { type: string }
+        size: { type: integer }
+        localPath: { type: string }
+        createdAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time }

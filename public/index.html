@@ -307,7 +307,7 @@ body{display:flex;flex-direction:column}
 <header id="app-header">
   <div class="logo">
     <i class="fas fa-network-wired"></i>
-    <span>PipelineLM Pro</span>
+    <span>NOTEtoolsLM</span>
   </div>
   <div class="header-center">
     <div id="conn-pill" class="offline">
@@ -327,6 +327,12 @@ body{display:flex;flex-direction:column}
     </button>
     <button class="btn sm" onclick="syncFleet()" title="Refresh notebook list">
       <i class="fas fa-sync-alt"></i> Sync Fleet
+    </button>
+    <button class="btn sm" onclick="toggleTheme()" title="Toggle dark/light theme">
+      <i class="fas fa-moon" id="theme-icon"></i>
+    </button>
+    <button class="btn sm" onclick="showSettingsModal()" title="Settings">
+      <i class="fas fa-cog"></i>
     </button>
   </div>
 </header>
@@ -500,6 +506,7 @@ body{display:flex;flex-direction:column}
           <option value="name">Name A-Z</option>
           <option value="name-desc">Name Z-A</option>
         </select>
+        <button class="btn sm" onclick="showExportModal()" title="Export artifacts"><i class="fas fa-file-export"></i> Export</button>
       </div>
       <div id="bulk-bar">
         <input type="checkbox" id="bulk-check-all" onchange="toggleSelectAllVault()">
@@ -712,6 +719,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if(e.key === 'Escape') {
       document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('visible'));
       hideCtxMenu();
+    }
+    if(e.key === '?' && !e.target.matches('input, textarea, select')) {
+      e.preventDefault();
+      showShortcutsModal();
     }
   });
 });
@@ -1757,6 +1768,122 @@ function stringColor(str) {
 
 function toggleLeftSidebar() {
   document.getElementById('left-sidebar').classList.toggle('open');
+}
+
+// ─── Theme Toggle ───
+function toggleTheme() {
+  const html = document.documentElement;
+  const current = html.getAttribute('data-theme') || 'dark';
+  const next = current === 'dark' ? 'light' : 'dark';
+  html.setAttribute('data-theme', next);
+  localStorage.setItem('ntlm-theme', next);
+  const icon = document.getElementById('theme-icon');
+  if(icon) icon.className = next === 'dark' ? 'fas fa-moon' : 'fas fa-sun';
+}
+(function initTheme() {
+  const saved = localStorage.getItem('ntlm-theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', saved);
+})();
+
+// ─── Settings Modal ───
+function showSettingsModal() {
+  let el = document.getElementById('modal-settings');
+  if(!el) {
+    el = document.createElement('div');
+    el.id = 'modal-settings';
+    el.className = 'modal-overlay';
+    el.innerHTML = `
+      <div class="modal" style="max-width:420px">
+        <div class="modal-header"><h3><i class="fas fa-cog"></i> Settings</h3><button class="btn icon" onclick="document.getElementById('modal-settings').classList.remove('visible')"><i class="fas fa-times"></i></button></div>
+        <div class="modal-body" style="padding:16px;display:flex;flex-direction:column;gap:12px">
+          <label style="font-size:12px;color:var(--fg2)">API Base URL (leave empty for same-origin)</label>
+          <input class="form-input" id="setting-api-base" value="${API_BASE}" placeholder="http://localhost:3000">
+          <label style="font-size:12px;color:var(--fg2)">Theme</label>
+          <select class="form-select" id="setting-theme" onchange="document.documentElement.setAttribute('data-theme',this.value);localStorage.setItem('ntlm-theme',this.value)">
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </select>
+          <button class="btn primary" onclick="saveSettings()">Save</button>
+        </div>
+      </div>`;
+    document.body.appendChild(el);
+  }
+  el.classList.add('visible');
+}
+function saveSettings() {
+  const base = document.getElementById('setting-api-base').value.trim();
+  if(base) { API_BASE = base; localStorage.setItem('ntlm-api-base', base); }
+  else { API_BASE = ''; localStorage.removeItem('ntlm-api-base'); }
+  showToast('Settings saved', 'ok');
+  document.getElementById('modal-settings').classList.remove('visible');
+}
+
+// ─── Export Modal ───
+function showExportModal() {
+  let el = document.getElementById('modal-export');
+  if(!el) {
+    el = document.createElement('div');
+    el.id = 'modal-export';
+    el.className = 'modal-overlay';
+    el.innerHTML = `
+      <div class="modal" style="max-width:360px">
+        <div class="modal-header"><h3><i class="fas fa-file-export"></i> Export Artifacts</h3><button class="btn icon" onclick="document.getElementById('modal-export').classList.remove('visible')"><i class="fas fa-times"></i></button></div>
+        <div class="modal-body" style="padding:16px;display:flex;flex-direction:column;gap:10px">
+          <button class="btn" onclick="exportArtifacts('csv')"><i class="fas fa-file-csv"></i> CSV</button>
+          <button class="btn" onclick="exportArtifacts('json')"><i class="fas fa-file-code"></i> JSON</button>
+          <button class="btn" onclick="exportArtifacts('md')"><i class="fas fa-file-alt"></i> Markdown</button>
+        </div>
+      </div>`;
+    document.body.appendChild(el);
+  }
+  el.classList.add('visible');
+}
+function exportArtifacts(format) {
+  const artifacts = State.vaultArtifacts || [];
+  if(artifacts.length === 0) { showToast('No artifacts to export', 'err'); return; }
+  let blob, filename;
+  if(format === 'json') {
+    blob = new Blob([JSON.stringify(artifacts, null, 2)], {type:'application/json'});
+    filename = 'artifacts.json';
+  } else if(format === 'csv') {
+    const headers = ['id','title','type','notebookName','status','createdAt'];
+    const rows = artifacts.map(a => [a.id, a.title, a.type, a.notebookName, a.status, a.createdAt].map(v => `"${(v||'').replace(/"/g,'""')}"`).join(','));
+    blob = new Blob([[headers.join(','), ...rows].join('\n')], {type:'text/csv'});
+    filename = 'artifacts.csv';
+  } else {
+    const lines = artifacts.map(a => `## ${a.title}\n- **Type:** ${a.type}\n- **Notebook:** ${a.notebookName}\n- **Status:** ${a.status}\n- **Created:** ${a.createdAt}\n\n${a.prompt || ''}\n---\n`);
+    blob = new Blob([lines.join('\n')], {type:'text/markdown'});
+    filename = 'artifacts.md';
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+  showToast(`Exported ${artifacts.length} artifacts as ${format.toUpperCase()}`, 'ok');
+  document.getElementById('modal-export').classList.remove('visible');
+}
+
+// ─── Shortcuts Modal ───
+function showShortcutsModal() {
+  let el = document.getElementById('modal-shortcuts');
+  if(!el) {
+    el = document.createElement('div');
+    el.id = 'modal-shortcuts';
+    el.className = 'modal-overlay';
+    el.innerHTML = `
+      <div class="modal" style="max-width:380px">
+        <div class="modal-header"><h3><i class="fas fa-keyboard"></i> Keyboard Shortcuts</h3><button class="btn icon" onclick="document.getElementById('modal-shortcuts').classList.remove('visible')"><i class="fas fa-times"></i></button></div>
+        <div class="modal-body" style="padding:16px;font-size:13px;line-height:2">
+          <div style="display:flex;justify-content:space-between"><span><kbd>?</kbd></span><span>Show shortcuts</span></div>
+          <div style="display:flex;justify-content:space-between"><span><kbd>Esc</kbd></span><span>Close modals</span></div>
+          <div style="display:flex;justify-content:space-between"><span><kbd>1-5</kbd></span><span>Switch tabs</span></div>
+          <div style="display:flex;justify-content:space-between"><span><kbd>n</kbd></span><span>New project</span></div>
+          <div style="display:flex;justify-content:space-between"><span><kbd>s</kbd></span><span>Sync fleet</span></div>
+        </div>
+      </div>`;
+    document.body.appendChild(el);
+  }
+  el.classList.add('visible');
 }
 </script>
 </body>

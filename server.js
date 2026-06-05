@@ -165,6 +165,17 @@ app.use((req, res, next) => {
   next();
 });
 
+// ─── Swagger Docs ───
+try {
+  const swaggerUi = require('swagger-ui-express');
+  const YAML = require('yamljs');
+  const swaggerDoc = YAML.load(path.join(__dirname, 'docs', 'openapi.yaml'));
+  app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDoc));
+  logger.info('Swagger UI served at /docs');
+} catch(e) {
+  logger.warn('Swagger UI not available', { error: e.message });
+}
+
 // ─── Static files ───
 if(fs.existsSync(PUBLIC_DIR)) {
   app.use(express.static(PUBLIC_DIR));

@@ -1,0 +1,14 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+README.md
+.env
+.env.local
+.data
+vault-storage
+ingestion
+dist
+.github
+*.md
+!docs/openapi.yaml

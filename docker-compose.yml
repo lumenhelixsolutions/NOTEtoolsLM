@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  notetoolslm:
+    build: .
+    container_name: notetoolslm-v2
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./.data:/app/.data
+      - ./vault-storage:/app/vault-storage
+      - ./ingestion:/app/ingestion
+    environment:
+      - PORT=3000
+      - DATA_DIR=/app/.data
+      - VAULT_DIR=/app/vault-storage
+      - INGESTION_DIR=/app/ingestion
+      - LOG_LEVEL=info
+    restart: unless-stopped
