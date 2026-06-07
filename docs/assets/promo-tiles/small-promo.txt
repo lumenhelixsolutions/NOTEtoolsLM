@@ -1,0 +1,18 @@
+Small Promo Tile
+Resolution: 440×280
+Format: PNG
+
+Visual Description:
+- Compact landscape canvas suitable for Chrome Web Store small promo slot
+- Left side (60%): Dark navy gradient background with the NOTEtoolsLM logo/icon prominently centered
+- Right side (40%): Lighter accent panel with tagline text
+- Text elements:
+  - Main: "NOTEtoolsLM" in bold, modern sans-serif (white)
+  - Sub: "Command Center for NotebookLM" in smaller text (light gray/blue)
+  - Micro badge: "v2.0" in a small pill (electric blue)
+- Subtle background pattern: faint grid lines or circuit-board traces suggesting orchestration/technology
+- One small Chrome Extension badge in the bottom-right corner
+- No screenshots or complex UI — this is a brand + tagline tile
+
+Mood: Bold, recognizable, professional.
+Color palette: Deep navy (#0f0f23), electric blue (#3b82f6), white, subtle gray accents.

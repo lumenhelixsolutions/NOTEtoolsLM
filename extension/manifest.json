@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "NOTEtoolsLM",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "The ultimate open-source orchestration suite for Google NotebookLM — fleet dashboard, vault, and prefab generation.",
   "default_locale": "en",
   "minimum_chrome_version": "114",
@@ -51,5 +51,6 @@
       "resources": ["shared/*", "icons/*"],
       "matches": ["*://notebooklm.google.com/*"]
     }
-  ]
+  ],
+  "update_url": "https://clients2.google.com/service/update2/crx"
 }

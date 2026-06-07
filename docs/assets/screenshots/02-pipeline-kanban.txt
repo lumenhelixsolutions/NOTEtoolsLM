@@ -1,0 +1,19 @@
+Screenshot 02 — Pipeline Kanban Board
+Resolution: 1280×800
+Format: PNG (Chrome Web Store requirement)
+
+Visual Description:
+- Full-view of the Production Pipeline Kanban board within the Fleet Dashboard
+- Five columns left-to-right: Queued → Running → Processing → Completed → Failed
+- Each column has a colored header: gray (Queued), blue (Running), amber (Processing), green (Completed), red (Failed)
+- Cards in columns represent prefab generation jobs
+- Sample cards show: prefab icon (audio, video, slides), notebook name, job type, progress bar or timestamp
+- "Running" column has 2 cards with animated-style progress bars (static in screenshot)
+- "Completed" column has 3 cards with checkmarks and "Store to Vault" buttons
+- "Failed" column has 1 card with a retry button
+- Top bar shows global stats: "12 Jobs Today | 8 Completed | 2 Running | 1 Failed | 1 Queued"
+- Filter dropdowns: "Filter by Type", "Filter by Notebook"
+- Drag-and-drop visual affordances (grip handles on cards)
+
+Mood: Dynamic, productive, factory-floor efficiency meets modern SaaS.
+Color palette: Column headers in distinct status colors, cards in dark charcoal, accent icons per prefab type.

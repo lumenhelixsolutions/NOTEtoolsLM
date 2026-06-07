@@ -1,0 +1,24 @@
+Screenshot 05 — Prefab Launcher
+Resolution: 1280×800
+Format: PNG (Chrome Web Store requirement)
+
+Visual Description:
+- Modal/dialog overlay within the NOTEtoolsLM dashboard or extension side panel
+- Title: "Generate Content" with subtitle "Choose a prefab template"
+- 8 prefab cards arranged in a 4×2 grid:
+  1. 🎙️ Deep-Dive Podcast (audio icon, purple)
+  2. 📊 Executive Briefing (report icon, teal)
+  3. 🎬 Explainer Video (video icon, red)
+  4. 📑 Investor Slide Deck (slides icon, blue)
+  5. 🧠 Knowledge Mind Map (map icon, green)
+  6. ⚖️ Critique & Debate (audio icon, amber)
+  7. 🎓 Tutorial Walkthrough (audio icon, indigo)
+  8. 🔍 Competitive Analysis (report icon, orange)
+- Each card: large emoji/icon, prefab name, short 1-line description, estimated generation time
+- A dropdown above the grid: "Target Notebook" — showing selected notebook name
+- Bottom of modal has: "Cancel" button and "Generate" button (disabled until a prefab is selected)
+- One prefab card is hovered/selected with a subtle glow border and checkmark
+- Background is slightly dimmed to focus attention on the modal
+
+Mood: Creative, empowering, choice-rich — a content generation playground.
+Color palette: Dark modal background, each prefab card with its own accent color halo, white text, blue primary action button.

@@ -1,0 +1,18 @@
+Screenshot 03 — Vault File Grid
+Resolution: 1280×800
+Format: PNG (Chrome Web Store requirement)
+
+Visual Description:
+- Vault view inside the Fleet Dashboard showing locally stored artifacts
+- Left sidebar with type filters: All, Audio, Video, Slides, Maps, Reports
+- Main area is a responsive grid of file cards (4 columns)
+- Each card shows: file type icon (large), filename, source notebook, date stored, file size
+- Type-specific color coding: Audio = purple, Video = red, Slides = blue, Maps = green, Reports = orange
+- Top action bar with: "Select All", "Bulk Download", "Bulk Delete", "Import Files" buttons
+- A search bar with placeholder "Search vault..."
+- One card selected (checkbox checked) with a detail drawer sliding in from the right showing metadata, CDI score, and preview
+- Path breadcrumb: Vault > Audio > 2026-06
+- Empty state illustration partially visible at bottom (subtle, not distracting)
+
+Mood: Safe, organized, local-first — your data at your fingertips.
+Color palette: Dark background, type-colored icon halos, clean white text, blue selection highlights.

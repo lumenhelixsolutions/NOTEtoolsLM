@@ -1,0 +1,21 @@
+Marquee Promo Tile
+Resolution: 1400×560
+Format: PNG
+
+Visual Description:
+- Wide cinematic banner format, perfect for the Chrome Web Store marquee slot
+- Full-bleed dark gradient background (left: deep navy, right: slightly lighter navy with blue tint)
+- Left side (45%): Large NOTEtoolsLM wordmark/logo with tagline below:
+  - "The ultimate open-source orchestration suite for Google NotebookLM"
+  - Sub-line: "Fleet dashboard · Browser extension · Local vault"
+- Right side (55%): A composite hero image showing three overlapping UI screenshots at slight angles:
+  - Back layer: Fleet dashboard notebook grid (lowest opacity)
+  - Middle layer: Pipeline kanban board (medium opacity)
+  - Front layer: Extension side panel on notebooklm.google.com (highest opacity, most prominent)
+- Screenshots have subtle drop shadows and rounded corners to look like floating cards
+- A single CTA-style button visual (not clickable in image) saying "Get it on the Chrome Web Store" in the bottom-left
+- Very subtle animated particle/grid background effect (static representation)
+- Open-source badge (MIT) in bottom-right corner
+
+Mood: Cinematic, premium, open-source power.
+Color palette: Deep navy gradient, electric blue highlights, screenshot-native colors, white and light-gray text.

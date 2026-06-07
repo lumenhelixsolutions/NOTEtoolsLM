@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NOTEtoolsLM — Privacy Policy</title>
+  <style>
+    :root {
+      --bg: #0f0f23;
+      --text: #e4e4e7;
+      --muted: #a1a1aa;
+      --accent: #3b82f6;
+      --card: #18182b;
+      --border: #27273a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+    }
+    header {
+      border-bottom: 1px solid var(--border);
+      background: var(--card);
+      padding: 2rem 1rem;
+      text-align: center;
+    }
+    header h1 { margin: 0 0 0.25rem; font-size: 1.75rem; }
+    header p { margin: 0; color: var(--muted); }
+    main { max-width: 800px; margin: 0 auto; padding: 2rem 1rem; }
+    section { margin-bottom: 2.5rem; }
+    h2 { font-size: 1.25rem; margin: 0 0 0.75rem; color: #fff; }
+    h3 { font-size: 1rem; margin: 1.25rem 0 0.5rem; color: var(--accent); }
+    p, ul { color: var(--muted); }
+    ul { padding-left: 1.25rem; }
+    li { margin-bottom: 0.5rem; }
+    .badge {
+      display: inline-block;
+      background: var(--accent);
+      color: #fff;
+      padding: 0.25rem 0.6rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .highlight {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      padding: 1rem 1.25rem;
+      margin-top: 0.75rem;
+    }
+    footer {
+      text-align: center;
+      padding: 2rem 1rem;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.875rem;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>NOTEtoolsLM Privacy Policy</h1>
+    <p>Effective Date: June 5, 2026 &nbsp;|&nbsp; Version 2.0.0</p>
+  </header>
+
+  <main>
+    <section>
+      <span class="badge">Local-First</span>
+      <h2>Our Commitment</h2>
+      <p>
+        NOTEtoolsLM is built on a <strong>local-first</strong> architecture. Your data stays on your machine.
+        We do not run a cloud service, we do not sync your data to our servers, and we do not sell your information.
+      </p>
+    </section>
+
+    <section>
+      <h2>What Data Is Collected</h2>
+      <p>NOTEtoolsLM collects and stores only the minimal data required to function:</p>
+      <div class="highlight">
+        <ul>
+          <li><strong>Notebook IDs</strong> — identifiers returned by the Google NotebookLM SDK so the dashboard can list and manage your notebooks.</li>
+          <li><strong>Artifact metadata</strong> — titles, types, creation dates, and file paths of generated artifacts (not the artifact file contents themselves).</li>
+          <li><strong>Local preferences</strong> — extension settings such as vault path, theme choice, and onboarding completion state.</li>
+          <li><strong>Job queue state</strong> — pending and completed prefab generation jobs tracked in the local pipeline.</li>
+        </ul>
+      </div>
+      <p>
+        <strong>We do not collect:</strong> your NotebookLM login credentials, your Google account tokens, the text/content of your notebooks, or any personal identifiers such as email addresses or IP addresses.
+      </p>
+    </section>
+
+    <section>
+      <h2>How Data Is Stored</h2>
+      <p>
+        All data is stored <strong>locally</strong> on your computer:
+      </p>
+      <ul>
+        <li><strong>SQLite database</strong> — notebook metadata, artifact metadata, and job queue state are stored in a local SQLite file (default: <code>.data/notetoolslm.db</code>).</li>
+        <li><strong>Local file system</strong> — downloaded artifacts are written to the vault directory you configure (default: <code>vault-storage/</code>).</li>
+        <li><strong>Browser storage</strong> — the Chrome extension uses <code>chrome.storage.local</code> for settings and caching; this never leaves your browser.</li>
+      </ul>
+      <p>
+        There is no cloud database, no remote API storing your data, and no telemetry backend.
+      </p>
+    </section>
+
+    <section>
+      <h2>Third-Party Services</h2>
+      <p>NOTEtoolsLM interacts with the following third parties solely at your direction:</p>
+      <ul>
+        <li><strong>Google NotebookLM</strong> — via the official NotebookLM SDK and browser APIs. Data exchanged is governed by <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google's Privacy Policy</a>.</li>
+        <li><strong>Chrome Web Store</strong> — for extension updates. No user data is transmitted beyond the standard browser update check.</li>
+      </ul>
+      <p>
+        <strong>No third-party tracking:</strong> We do not use Google Analytics, Mixpanel, Sentry, or any other analytics or error-tracking services that transmit data off your device.
+      </p>
+    </section>
+
+    <section>
+      <h2>Data Sharing & Selling</h2>
+      <p>
+        We <strong>do not sell, rent, or trade</strong> your data. We do not share data with advertisers, data brokers, or any other external entities. Because all data is local, we physically cannot access it.
+      </p>
+    </section>
+
+    <section>
+      <h2>Your Rights & Control</h2>
+      <p>You have full control over your data:</p>
+      <ul>
+        <li><strong>Export</strong> — your vault files are standard documents (PDF, MP3, etc.) that you can move or copy at any time.</li>
+        <li><strong>Delete</strong> — uninstalling the extension and deleting the project folder removes all local data permanently.</li>
+        <li><strong>Inspect</strong> — the SQLite database is unencrypted and can be opened with any SQLite viewer for full transparency.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Security</h2>
+      <p>
+        Because NOTEtoolsLM is a self-hosted local application, security is in your hands:
+      </p>
+      <ul>
+        <li>The Fleet Orchestrator binds to <code>localhost</code> by default and is not exposed to the internet.</li>
+        <li>No remote access means no remote attack surface for your notebook data.</li>
+        <li>We follow responsible disclosure. See <a href="SECURITY.md">SECURITY.md</a> for vulnerability reporting.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Children's Privacy</h2>
+      <p>
+        NOTEtoolsLM is not directed at children under 13. We do not knowingly collect data from children. If you believe a child has used the service, deleting the local files removes all associated data.
+      </p>
+    </section>
+
+    <section>
+      <h2>Changes to This Policy</h2>
+      <p>
+        We may update this Privacy Policy to reflect new features or legal requirements. Changes will be posted to this page with an updated effective date. Because the project is open source, you can inspect every code change in our <a href="https://github.com/notetoolslm/notetoolslm" target="_blank" rel="noopener">GitHub repository</a>.
+      </p>
+    </section>
+
+    <section>
+      <h2>Contact</h2>
+      <p>
+        For privacy questions, data concerns, or to report a privacy-related issue:
+      </p>
+      <div class="highlight">
+        <ul>
+          <li>Open a private issue on <a href="https://github.com/notetoolslm/notetoolslm/issues" target="_blank" rel="noopener">GitHub Issues</a></li>
+          <li>Email the maintainers at the address listed in the repository <code>SECURITY.md</code></li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>© 2026 NOTEtoolsLM Collective. MIT License. Not affiliated with Google.</p>
+  </footer>
+</body>
+</html>

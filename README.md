@@ -9,11 +9,12 @@
 </p>
 
 <p align="center">
-  <a href="#"><img src="https://img.shields.io/badge/version-2.0.0-blue.svg" alt="Version"></a>
+  <a href="#"><img src="https://img.shields.io/badge/version-2.2.0-blue.svg" alt="Version"></a>
   <a href="#"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License"></a>
   <a href="#"><img src="https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg" alt="Node"></a>
   <a href="#"><img src="https://img.shields.io/badge/platform-Chrome%20%7C%20Brave%20%7C%20Edge-purple.svg" alt="Platform"></a>
   <a href="#"><img src="https://img.shields.io/badge/status-Beta-orange.svg" alt="Status"></a>
+  <a href="https://chrome.google.com/webstore/detail/notetoolslm"><img src="https://img.shields.io/badge/Chrome%20Web%20Store-Install-brightgreen.svg" alt="Chrome Web Store"></a>
 </p>
 
 ---
@@ -41,6 +42,11 @@ Instead of hunting through notebooks one-by-one, NOTEtoolsLM gives you a **unifi
 - 📦 **Bulk Operations** — select, download, store, delete across many artifacts at once
 - 🔎 **Inspector Panel** — metadata, prompt preview, and synthetic CDI (Citation Density Index)
 - 🔄 **Real-time** — WebSocket live updates with HTTP polling fallback
+- ⚡ **Real SDK Integration** — primary artifact creation via NotebookLM SDK with automatic simulation fallback
+- 📈 **Streaming Progress** — live progress percentages pushed via WebSocket as SDK calls advance
+- 🔁 **Exponential Backoff** — automatic retry (2s → 5s → 15s → 30s) for SDK rate limits
+- 🔗 **Webhook Callbacks** — `POST /api/webhook/notebooklm` with HMAC-SHA256 signature validation
+- 💾 **Binary Vault Storage** — real MP3/MP4/PDF downloads with 100MB size limits and proper Content-Type headers
 
 ### Browser Extension
 - 🧩 **Side Panel** — persistent vault grid, inspector, settings, onboarding gate
@@ -83,14 +89,52 @@ npm start
 # Dashboard opens at http://localhost:3000
 ```
 
-### 3. Load the Extension (Developer Mode)
+### 3. Install the Extension
+
+#### Option A: Chrome Web Store (Recommended)
+1. Visit the **[NOTEtoolsLM Chrome Web Store page](https://chrome.google.com/webstore/detail/notetoolslm)**
+2. Click **Add to Chrome**
+3. Accept the permissions
+4. Click the NOTEtoolsLM icon in the toolbar to open the side panel
+
+#### Option B: Developer Mode (Unpacked)
 1. Open Chrome/Brave and go to `chrome://extensions/`
 2. Enable **Developer Mode** (toggle top-right)
 3. Click **Load unpacked**
 4. Select the `extension/` folder
 5. Click the NOTEtoolsLM icon in the toolbar to open the side panel
 
-### 4. Authenticate (Optional but Recommended)
+### 4. Set up Server Authentication
+
+NOTEtoolsLM v2.2.0 requires a local user account to access the API:
+
+```bash
+# 1. Start the server
+npm start
+
+# 2. Register your first account via the extension side panel
+#    - Open the NOTEtoolsLM side panel in Chrome
+#    - Click "Create Account" and choose a username/password
+#    - Or use curl:
+curl -X POST http://localhost:3000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"SecurePass1"}'
+
+# 3. Log in through the extension or via curl:
+curl -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"SecurePass1"}'
+```
+
+**Password requirements:** minimum 8 characters, at least 1 uppercase letter, 1 number.
+
+**JWT Secret:** For production or persistent deployments, set `JWT_SECRET` in your `.env` file:
+
+```bash
+JWT_SECRET=$(node -e "console.log(require('crypto').randomBytes(64).toString('hex'))")
+```
+
+### 5. Authenticate with NotebookLM SDK (Optional)
 ```bash
 npx notebooklm-sdk login
 # Or click "Sync Auth" in the dashboard
@@ -102,9 +146,9 @@ npx notebooklm-sdk login
 
 > *(Placeholder — add 1280×800 screenshots here before launch)*
 
-| Dashboard | Pipeline Kanban | Extension Side Panel |
-|-----------|-----------------|----------------------|
-| `docs/assets/screenshot-dashboard.png` | `docs/assets/screenshot-pipeline.png` | `docs/assets/screenshot-extension.png` |
+| Fleet Dashboard | Pipeline Kanban | Vault Grid | Extension Side Panel | Prefab Launcher |
+|-----------------|-----------------|------------|----------------------|-----------------|
+| `docs/assets/screenshots/01-fleet-dashboard.txt` | `docs/assets/screenshots/02-pipeline-kanban.txt` | `docs/assets/screenshots/03-vault-file-grid.txt` | `docs/assets/screenshots/04-extension-side-panel.txt` | `docs/assets/screenshots/05-prefab-launcher.txt` |
 
 ---
 
@@ -132,8 +176,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full technical deep-div
 
 - [x] v2.0.0-beta — Fleet dashboard, extension, vault, 8 prefabs
 - [ ] v2.1.0 — Real NotebookLM SDK artifact generation (replace simulation)
-- [ ] v2.2.0 — License enforcement + Pro/Free tier gating
-- [ ] v2.3.0 — Chrome Web Store public listing
+- [x] v2.2.0 — Server-side authentication & security (JWT, bcrypt, SQLite, brute-force protection)
+- [x] v2.3.0 — Chrome Web Store launch assets & submission prep
 - [ ] v2.4.0 — Multi-language i18n expansion
 - [ ] v2.5.0 — Collaborative team workspaces
 

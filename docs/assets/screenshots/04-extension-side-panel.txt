@@ -1,0 +1,18 @@
+Screenshot 04 — Extension Side Panel
+Resolution: 1280×800
+Format: PNG (Chrome Web Store requirement)
+
+Visual Description:
+- Google Chrome window showing notebooklm.google.com in the main tab
+- The NOTEtoolsLM side panel is open on the right side of the browser (Chrome sidePanel API)
+- NotebookLM page shows a sample notebook titled "Market Research: AI Assistants"
+- Side panel has three tabs: "Vault", "Inspector", "Settings" (Vault tab active)
+- Vault tab shows a compact list of recently stored artifacts from this notebook
+- Each artifact row: icon, truncated name, "Open" and "Store" buttons
+- Inspector tab (partially visible/tabbed) shows metadata fields: Title, Type, Source, CDI Score, Created At
+- Top of side panel has the NOTEtoolsLM icon and title, plus a connection status dot
+- A floating toolbar injected by the content script is visible near the bottom-right of the NotebookLM page with quick-action buttons: "Prefab", "Store All", "Sync"
+- Clean separation between the NotebookLM UI (white/light) and the side panel (dark theme)
+
+Mood: Seamless integration, power without disruption, side-by-side productivity.
+Color palette: NotebookLM's native white/light UI contrasting with NOTEtoolsLM's dark side panel, blue accent buttons.

@@ -1,0 +1,18 @@
+Screenshot 01 — Fleet Dashboard Overview
+Resolution: 1280×800
+Format: PNG (Chrome Web Store requirement)
+
+Visual Description:
+- Browser window showing the NOTEtoolsLM Fleet Dashboard at http://localhost:3000
+- Clean, modern dark-themed UI with a navy sidebar (#1a1a2e) on the left
+- Top navigation bar with NOTEtoolsLM logo, "Fleet" tab active, "Pipeline", "Vault", "Settings"
+- Main content area displays a grid of notebook cards (3 columns)
+- Each card shows: Notebook title, sync status badge (green "Synced" / yellow "Syncing"), artifact count, last updated timestamp
+- A "Sync All" button in the top-right corner
+- WebSocket connection indicator in the footer (green dot "Live")
+- One card expanded/highlighted to show quick actions: "Open in NotebookLM", "Generate Prefab", "Inspect"
+- Subtle background gradient or pattern to add depth
+- No sensitive personal data visible; use fictional notebook names like "Product Research Q3", "Podcast Scripts", "Competitive Analysis"
+
+Mood: Professional, organized, powerful — the command center feel.
+Color palette: Dark navy, electric blue accents, green status indicators, white text.

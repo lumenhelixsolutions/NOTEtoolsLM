@@ -1,0 +1,19 @@
+Large Promo Tile
+Resolution: 920×680
+Format: PNG
+
+Visual Description:
+- Larger portrait-oriented canvas with more room for visual storytelling
+- Top third: Dark header with NOTEtoolsLM logo left-aligned, "Chrome Extension" badge right-aligned
+- Middle third: Hero screenshot of the Fleet Dashboard (slightly angled or with subtle 3D perspective) showing notebook cards and the pipeline
+- Bottom third: Three feature callouts with icons in a horizontal row:
+  1. 🧩 Side Panel — "Vault & Inspector at your side"
+  2. 🏭 Pipeline — "Kanban for content generation"
+  3. 📦 Prefabs — "8 templates, one click"
+- Each callout has an icon, bold label, and one-line description
+- A subtle gradient overlay from bottom (darker) to top (lighter) to ensure text readability
+- Decorative elements: faint floating geometric shapes (hexagons, circles) in the background
+- URL at very bottom in small text: "github.com/notetoolslm"
+
+Mood: Feature-rich, inviting, ready to install.
+Color palette: Deep navy base, dashboard screenshot colors, icon accent colors per feature, white text.
