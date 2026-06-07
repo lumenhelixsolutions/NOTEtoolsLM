@@ -383,9 +383,9 @@ function renderVault() {
           </div>
         </div>
         <div class="card-actions">
-          ${!isStored ? `<button class="btn primary sm" data-action="store" data-id="${art.id}">&#128190; Store</button>` : ''}
-          <button class="btn sm" data-action="inspect" data-id="${art.id}">&#128203; Inspect</button>
-          <button class="btn sm" data-action="dl" data-id="${art.id}">&#11123; DL</button>
+          ${!isStored ? `<button class="btn primary sm" data-action="store" data-id="${art.id}">&#128190; ${_('store')}</button>` : ''}
+          <button class="btn sm" data-action="inspect" data-id="${art.id}">&#128203; ${_('inspect')}</button>
+          <button class="btn sm" data-action="dl" data-id="${art.id}">&#11123; ${_('dl')}</button>
           <button class="btn sm" data-action="del" data-id="${art.id}" style="color:var(--err);">&#128465;</button>
         </div>
       </div>

@@ -1,0 +1,28 @@
+/* ═══ DARK THEME VARIABLES ═══ */
+:root {
+  --bg: #0a0e1a;
+  --bg2: #111827;
+  --bg3: #1a2236;
+  --bg4: #242d42;
+  --fg: #e2e8f0;
+  --fg2: #94a3b8;
+  --fg3: #64748b;
+  --accent: #3b82f6;
+  --accent2: #60a5fa;
+  --accent3: #1d4ed8;
+  --ok: #10b981;
+  --warn: #f59e0b;
+  --err: #ef4444;
+  --info: #06b6d4;
+  --glass: rgba(17,24,39,0.75);
+  --glass2: rgba(255,255,255,0.05);
+  --glass3: rgba(255,255,255,0.1);
+  --border: rgba(255,255,255,0.08);
+  --radius: 10px;
+  --radius2: 6px;
+  --shadow: 0 4px 24px rgba(0,0,0,0.4);
+  --shadow2: 0 2px 12px rgba(0,0,0,0.3);
+  --font: 'Inter',system-ui,-apple-system,sans-serif;
+  --sidebarW: 280px;
+  --rightbarW: 320px;
+}

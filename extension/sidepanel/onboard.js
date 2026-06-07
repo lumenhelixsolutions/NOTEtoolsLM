@@ -1,5 +1,9 @@
 // NOTEtoolsLM — Onboarding Controller
 
+import { localizeHtml } from '../shared/i18n.js';
+
+const _o = chrome.i18n.getMessage.bind(chrome.i18n);
+
 const TOTAL = 5;
 let current = 0;
 
@@ -33,7 +37,7 @@ function goTo(index) {
     btnNext.style.display = 'none';
   } else {
     btnNext.style.display = '';
-    btnNext.textContent = 'Next';
+    btnNext.textContent = _o('next');
   }
 
   dotsEl.querySelectorAll('.dot').forEach((d, i) => {
@@ -59,7 +63,7 @@ document.getElementById('btn-activate').addEventListener('click', async () => {
     return;
   }
   if (!key.startsWith('PLM-')) {
-    alert('License key should start with PLM-');
+    alert(_o('licenseKeyInvalid'));
     return;
   }
   try {
@@ -77,4 +81,5 @@ document.getElementById('license-input').addEventListener('keydown', (e) => {
 });
 
 // Init
+localizeHtml();
 goTo(0);

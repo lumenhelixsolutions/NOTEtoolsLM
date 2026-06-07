@@ -432,6 +432,24 @@ body {
 }
 .fade-in { animation: fadeIn .15s ease-out; }
 
+/* ─── RTL Support ─── */
+[dir="rtl"] .header-brand { flex-direction: row-reverse; }
+[dir="rtl"] .header-actions { flex-direction: row-reverse; }
+[dir="rtl"] .notebook-row { flex-direction: row-reverse; }
+[dir="rtl"] .inputs-row { flex-direction: row-reverse; }
+[dir="rtl"] .chips { flex-direction: row-reverse; }
+[dir="rtl"] .card-actions { direction: rtl; }
+[dir="rtl"] .inspector-header { flex-direction: row-reverse; }
+[dir="rtl"] .modal-header { flex-direction: row-reverse; }
+[dir="rtl"] .modal-footer { flex-direction: row-reverse; }
+[dir="rtl"] .inspector-header-title { flex-direction: row-reverse; }
+[dir="rtl"] .card-meta { flex-direction: row-reverse; }
+[dir="rtl"] .inspector-actions { flex-direction: row-reverse; }
+[dir="rtl"] .empty-state { direction: rtl; }
+[dir="rtl"] .field-label { text-align: right; }
+[dir="rtl"] .modal-label { text-align: right; }
+[dir="rtl"] .notebook-select { direction: rtl; }
+
 /* ─── Responsive ─── */
 @media (min-width: 400px) {
   .vault-container { grid-template-columns: 1fr 1fr 1fr; }

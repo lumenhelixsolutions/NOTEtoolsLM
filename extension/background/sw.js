@@ -4,6 +4,8 @@
 import { MSG_ACTIONS, STORAGE_KEYS } from '../shared/constants.js';
 import { storageGet, storageSet, generateId } from '../shared/utils.js';
 
+const _b = chrome.i18n.getMessage.bind(chrome.i18n);
+
 // ─── Install / Startup ───
 chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === 'install') {
@@ -30,7 +32,7 @@ chrome.action.onClicked.addListener(async (tab) => {
 chrome.runtime.onStartup.addListener(() => {
   chrome.contextMenus.create({
     id: 'open-vault',
-    title: 'Open NOTEtoolsLM Vault',
+    title: _b('openVault'),
     contexts: ['action']
   });
 });
@@ -76,7 +78,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return await requestContentScan(sender.tab?.id);
 
       default:
-        return { error: 'Unknown action: ' + msg.action };
+        return { error: _b('unknownAction', msg.action) };
     }
   };
 
@@ -158,7 +160,7 @@ async function downloadArtifact(artifactId) {
   const data = await storageGet(STORAGE_KEYS.artifacts);
   const artifacts = data[STORAGE_KEYS.artifacts] || [];
   const art = artifacts.find(a => a.id === artifactId);
-  if (!art) return { error: 'Artifact not found' };
+  if (!art) return { error: _b('artifactNotFound') };
 
   const result = await chrome.downloads.download({
     url: art.downloadUrl || art.pageUrl,
@@ -203,12 +205,12 @@ async function deleteArtifact(artifactId) {
 
 // ─── Request content script scan ───
 async function requestContentScan(tabId) {
-  if (!tabId) return { error: 'No active tab' };
+  if (!tabId) return { error: _b('noActiveTab') };
   try {
     const resp = await chrome.tabs.sendMessage(tabId, { action: MSG_ACTIONS.SCAN_REQUEST });
     return resp || { scanned: true };
   } catch (e) {
-    return { error: 'Content script not available. Open notebooklm.google.com' };
+    return { error: _b('contentScriptUnavailable') };
   }
 }
 

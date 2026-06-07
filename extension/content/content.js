@@ -1,6 +1,8 @@
 // NOTEtoolsLM — Content Script
 // Runs on notebooklm.google.com: scrapes artifacts, injects toolbar, injects prefabs
 
+const _c = chrome.i18n.getMessage.bind(chrome.i18n);
+
 const TYPE_MAP = {
   audio: ['audio', 'podcast', 'deep-dive', 'deep dive', 'briefing', 'tutorial'],
   video: ['video', 'explainer', 'overview'],
@@ -248,11 +250,11 @@ function injectToolbar() {
     <div class="plm-tb-collapsed" id="plm-tb-toggle" title="NOTEtoolsLM">&#9889;</div>
     <div class="plm-tb-expanded" id="plm-tb-body" style="display:none;">
       <div class="plm-tb-header">
-        <span class="plm-tb-title">&#9889; Quick Launch</span>
+        <span class="plm-tb-title">&#9889; ${_c('quickLaunch')}</span>
         <button class="plm-tb-close" id="plm-tb-close">&times;</button>
       </div>
-      <input class="plm-tb-input" id="plm-tb-topic" placeholder="Target Topic" />
-      <input class="plm-tb-input" id="plm-tb-audience" placeholder="Target Audience" />
+      <input class="plm-tb-input" id="plm-tb-topic" placeholder="${_c('targetTopic')}" />
+      <input class="plm-tb-input" id="plm-tb-audience" placeholder="${_c('targetAudience')}" />
       <div class="plm-tb-grid" id="plm-tb-grid"></div>
     </div>
   `;
@@ -262,12 +264,12 @@ function injectToolbar() {
 
   // Render prefab buttons
   const PREFABS = [
-    { id: 'deep-dive', name: 'Deep-Dive', icon: '\uD83C\uDF99' },
-    { id: 'exec-brief', name: 'Brief', icon: '\uD83D\uDCCA' },
-    { id: 'explainer', name: 'Video', icon: '\uD83C\uDFAC' },
-    { id: 'investor-deck', name: 'Slides', icon: '\uD83D\uDCC1' },
-    { id: 'mind-map', name: 'Map', icon: '\uD83E\uDDE0' },
-    { id: 'tutorial', name: 'Tutorial', icon: '\uD83C\uDF93' }
+    { id: 'deep-dive', name: _c('prefabDeepDive'), icon: '\uD83C\uDF99' },
+    { id: 'exec-brief', name: _c('prefabBrief'), icon: '\uD83D\uDCCA' },
+    { id: 'explainer', name: _c('prefabVideo'), icon: '\uD83C\uDFAC' },
+    { id: 'investor-deck', name: _c('prefabSlides'), icon: '\uD83D\uDCC1' },
+    { id: 'mind-map', name: _c('prefabMap'), icon: '\uD83E\uDDE0' },
+    { id: 'tutorial', name: _c('prefabTutorial'), icon: '\uD83C\uDF93' }
   ];
 
   const grid = div.querySelector('#plm-tb-grid');
@@ -358,11 +360,11 @@ function injectPrefab(prefabId, topic, audience) {
       if (genBtn) genBtn.click();
     }, 200);
 
-    showToolbarToast('Prefab injected! Generating...');
+    showToolbarToast(_c('prefabInjected'));
   } else {
     // Fallback: copy to clipboard + show toast
     navigator.clipboard.writeText(prompt).then(() => {
-      showToolbarToast('Prompt copied! Paste into NotebookLM');
+      showToolbarToast(_c('promptCopied'));
     });
   }
 }
