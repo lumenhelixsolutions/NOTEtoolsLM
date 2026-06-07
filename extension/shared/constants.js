@@ -65,7 +65,9 @@ export const STORAGE_KEYS = {
   artifacts: 'plm:artifacts',
   notebooks: 'plm:notebooks',
   settings: 'plm:settings',
-  session: 'plm:session'
+  session: 'plm:session',
+  token: 'plm:token',
+  tokenExpiry: 'plm:tokenExpiry'
 };
 
 export const MSG_ACTIONS = {

@@ -13,23 +13,30 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 const { spawn } = require('child_process');
 function generateRequestId() {
   return Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
 }
 
 // ─── Third-party ───
-let express, WebSocket, chokidar, helmet, rateLimit;
+let express, WebSocket, chokidar, helmet, rateLimit, slowDown;
 try { express = require('express'); } catch(e) { console.error('[FATAL] express not installed. Run: npm install express'); process.exit(1); }
 try { WebSocket = require('ws'); } catch(e) { console.error('[FATAL] ws not installed. Run: npm install ws'); process.exit(1); }
 try { chokidar = require('chokidar'); } catch(e) { console.warn('[WARN] chokidar not installed. File watcher disabled.'); }
 try { helmet = require('helmet'); } catch(e) { console.warn('[WARN] helmet not installed. Security headers disabled.'); }
 try { rateLimit = require('express-rate-limit'); } catch(e) { console.warn('[WARN] express-rate-limit not installed. Rate limiting disabled.'); }
+try { slowDown = require('express-slow-down'); } catch(e) { console.warn('[WARN] express-slow-down not installed. Brute force protection disabled.'); }
 
 // ─── Internal modules ───
 const { Logger } = require('./lib/logger');
 const { JobQueue } = require('./lib/queue');
 const { getSdkClient, getCapabilities, resetSdk, checkAuth } = require('./lib/sdk-wrapper');
+const {
+  generateToken, verifyToken, authMiddleware,
+  validatePasswordStrength, checkLockout, recordFailedAttempt, clearLockout,
+  getUserByUsername, getUserById, createUser, verifyPassword
+} = require('./lib/auth');
 
 const logger = new Logger('server');
 
@@ -124,8 +131,20 @@ jobQueue.on('job-failed', (job) => {
 
 // ─── Express Setup ───
 const app = express();
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use((req, res, next) => {
+  if (req.path === '/api/webhook/notebooklm') {
+    express.raw({ type: 'application/json' })(req, res, next);
+  } else {
+    express.json({ limit: '50mb' })(req, res, next);
+  }
+});
+app.use((req, res, next) => {
+  if (req.path === '/api/webhook/notebooklm') {
+    next();
+  } else {
+    express.urlencoded({ extended: true, limit: '50mb' })(req, res, next);
+  }
+});
 
 // ─── Security Middleware ───
 if (helmet) {
@@ -144,6 +163,40 @@ if (rateLimit) {
   }));
   logger.info('Rate limiting enabled');
 }
+
+// ─── Slow Down for Auth Endpoints (Brute Force Protection) ───
+const authSpeedLimiter = slowDown ? slowDown({
+  windowMs: 15 * 60 * 1000,
+  delayAfter: 5,
+  delayMs: (used, req) => {
+    const delayAfter = req.slowDown?.delayAfter || 5;
+    const delay = (used - delayAfter) * 500;
+    return delay;
+  }
+}) : (req, res, next) => next();
+
+// ─── Global Auth Middleware (with exceptions) ───
+const PUBLIC_PATHS = [
+  '/health',
+  '/api/auth/register',
+  '/api/auth/login',
+  '/api/auth/refresh',
+  '/api/webhook/notebooklm',
+  '/docs',
+  '/docs/',
+  '/docs/index.html'
+];
+
+app.use((req, res, next) => {
+  if (PUBLIC_PATHS.some(p => req.path === p || req.path.startsWith(p + '/'))) {
+    return next();
+  }
+  // Also allow static files and swagger assets
+  if (req.path.startsWith('/docs/') || req.path.match(/\.(js|css|png|ico|svg|html)$/)) {
+    return next();
+  }
+  authMiddleware(req, res, next);
+});
 
 // CORS
 app.use((req, res, next) => {
@@ -218,6 +271,85 @@ async function getLegacySdkClient() {
 // ═══════════════════════════════════════════════════════════════
 //  API ROUTES
 // ═══════════════════════════════════════════════════════════════
+
+// ─── Health ───
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// ─── Auth ───
+app.post('/api/auth/register', authSpeedLimiter, (req, res) => {
+  const { username, password } = req.body || {};
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password are required' });
+  }
+  const strength = validatePasswordStrength(password);
+  if (!strength.valid) {
+    return res.status(400).json({ error: strength.reason });
+  }
+  const existing = getUserByUsername(username);
+  if (existing) {
+    return res.status(409).json({ error: 'Username already exists' });
+  }
+  try {
+    const user = createUser(username, password);
+    const token = generateToken(user.id);
+    logger.info('User registered', { username, userId: user.id });
+    res.status(201).json({ success: true, token, user: { id: user.id, username: user.username } });
+  } catch (e) {
+    logger.error('Registration failed', { error: e.message });
+    res.status(500).json({ error: 'Registration failed', detail: e.message });
+  }
+});
+
+app.post('/api/auth/login', authSpeedLimiter, (req, res) => {
+  const { username, password } = req.body || {};
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password are required' });
+  }
+
+  const lockout = checkLockout(username);
+  if (lockout.locked) {
+    return res.status(423).json({ error: 'Account locked', detail: `Try again in ${lockout.remainingMinutes} minute(s)` });
+  }
+
+  const user = getUserByUsername(username);
+  if (!user || !verifyPassword(password, user.password_hash)) {
+    recordFailedAttempt(username);
+    return res.status(401).json({ error: 'Invalid username or password' });
+  }
+
+  clearLockout(username);
+  const token = generateToken(user.id);
+  logger.info('User logged in', { username, userId: user.id });
+  res.json({ success: true, token, user: { id: user.id, username: user.username } });
+});
+
+app.post('/api/auth/refresh', authSpeedLimiter, (req, res) => {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) {
+    return res.status(401).json({ error: 'Missing token' });
+  }
+  const result = verifyToken(token);
+  if (!result.valid) {
+    return res.status(401).json({ error: 'Invalid token', detail: result.error });
+  }
+  const user = getUserById(result.userId);
+  if (!user) {
+    return res.status(401).json({ error: 'User not found' });
+  }
+  const newToken = generateToken(user.id);
+  res.json({ success: true, token: newToken, user: { id: user.id, username: user.username } });
+});
+
+app.get('/api/auth/me', (req, res) => {
+  const user = getUserById(req.userId);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  res.json({ id: user.id, username: user.username, createdAt: user.created_at });
+});
 
 // ─── Health / Status ───
 app.get('/api/status', (req, res) => {
@@ -302,6 +434,43 @@ app.post('/api/auth/sync', async (req, res) => {
     logHealth('Auth sync error: ' + err.message);
     res.status(500).json({ success: false, error: err.message, hint: 'Try running "npx notebooklm-sdk login" in a separate terminal' });
   });
+});
+
+// ─── Webhook ───
+app.post('/api/webhook/notebooklm', (req, res) => {
+  const secret = process.env.NOTEBOOKLM_WEBHOOK_SECRET || '';
+  const signature = req.headers['x-notebooklm-signature'] || '';
+  const payload = req.body; // Buffer because of express.raw
+  const expected = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+  const sig = signature.replace(/^sha256=/, '');
+  if (!sig || !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(sig))) {
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+  let data;
+  try {
+    data = JSON.parse(payload);
+  } catch (e) {
+    return res.status(400).json({ error: 'Invalid JSON payload' });
+  }
+  const job = jobQueue.getJob(data.jobId);
+  if (job) {
+    job.status = data.status || job.status;
+    job.progress = data.progress ?? job.progress;
+    if (data.artifact) {
+      job.result = { success: true, result: data.artifact };
+    }
+    job.updatedAt = new Date().toISOString();
+    jobQueue._persist();
+    jobQueue.emit('job-updated', job);
+    if (job.status === 'completed') {
+      job.completedAt = new Date().toISOString();
+      jobQueue.emit('job-completed', job);
+    }
+    broadcast({ type: 'webhook-update', jobId: job.id, status: job.status, progress: job.progress });
+    res.json({ success: true });
+  } else {
+    res.json({ success: true, note: 'Job not found' });
+  }
 });
 
 // ─── Prefabs ───
@@ -455,12 +624,22 @@ app.get('/api/artifacts', (req, res) => {
 });
 
 // ─── Download artifact ───
+const CONTENT_TYPES = {
+  '.mp3': 'audio/mpeg',
+  '.mp4': 'video/mp4',
+  '.pdf': 'application/pdf',
+  '.md': 'text/markdown',
+  '.json': 'application/json'
+};
+
 app.get('/api/artifacts/:id/download', async (req, res) => {
   const artifacts = loadJSON(ARTIFACTS_FILE, []);
   const artifact = artifacts.find(a => a.id === req.params.id);
   if(!artifact) return res.status(404).json({ error: 'Artifact not found' });
 
   if(artifact.localPath && fs.existsSync(artifact.localPath)) {
+    const ext = path.extname(artifact.localPath).toLowerCase();
+    if (CONTENT_TYPES[ext]) res.setHeader('Content-Type', CONTENT_TYPES[ext]);
     return res.download(artifact.localPath, path.basename(artifact.localPath));
   }
 
@@ -784,6 +963,10 @@ app.post('/api/vault/upload', (req, res) => {
   const filePath = path.join(typeDir, name);
   try {
     const buffer = Buffer.from(data, 'base64');
+    const MAX_SIZE = 100 * 1024 * 1024;
+    if(buffer.length > MAX_SIZE) {
+      return res.status(413).json({ error: 'File too large', maxBytes: MAX_SIZE });
+    }
     fs.writeFileSync(filePath, buffer);
     broadcast({ type: 'vault-file-added', file: { name, path: filePath, size: buffer.length } });
     res.json({ success: true, path: filePath, size: buffer.length });
@@ -832,34 +1015,45 @@ app.post('/api/artifacts/:id/store', async (req, res) => {
                 artifact.type === 'mind_map' ? '.json' : '.mp3';
     const localPath = path.join(typeDir, `${safeName}_${artifact.id.slice(0,6)}${ext}`);
 
+    let downloaded = false;
     try {
       const client = await getLegacySdkClient();
       const downloadFn = client.artifacts?.download || client.artifacts?.downloadAudio;
       if(typeof downloadFn === 'function' && artifact.source === 'api') {
-        const stream = await downloadFn.call(client.artifacts, artifact.id);
-        if(stream && stream.pipe) {
-          const writeStream = fs.createWriteStream(localPath);
-          stream.pipe(writeStream);
-          await new Promise((resolve, reject) => {
-            writeStream.on('finish', resolve);
-            writeStream.on('error', reject);
-          });
+        const result = await downloadFn.call(client.artifacts, artifact.id);
+        if(result) {
+          if(result.pipe) {
+            const writeStream = fs.createWriteStream(localPath);
+            result.pipe(writeStream);
+            await new Promise((resolve, reject) => {
+              writeStream.on('finish', resolve);
+              writeStream.on('error', reject);
+            });
+          } else if(Buffer.isBuffer(result)) {
+            fs.writeFileSync(localPath, result);
+          } else if(typeof result === 'string') {
+            fs.writeFileSync(localPath, result);
+          }
+          downloaded = true;
         }
       }
     } catch(e) {
-      logger.warn('Store download failed, creating placeholder', { artifactId: artifact.id, error: e.message });
-      fs.writeFileSync(localPath, JSON.stringify({
-        title: artifact.title,
-        type: artifact.type,
-        prompt: artifact.prompt,
-        createdAt: artifact.createdAt,
-        source: artifact.source,
-        note: 'Placeholder - download the actual file from NotebookLM Studio'
-      }, null, 2));
+      logger.warn('Store download failed', { artifactId: artifact.id, error: e.message });
+    }
+
+    if(!downloaded) {
+      return res.status(502).json({ error: 'Download failed', detail: 'Could not retrieve binary from SDK' });
+    }
+
+    const stats = fs.statSync(localPath);
+    const MAX_SIZE = 100 * 1024 * 1024;
+    if(stats.size > MAX_SIZE) {
+      fs.unlinkSync(localPath);
+      return res.status(413).json({ error: 'File too large', maxBytes: MAX_SIZE });
     }
 
     artifact.localPath = localPath;
-    artifact.localSize = fs.existsSync(localPath) ? fs.statSync(localPath).size : 0;
+    artifact.localSize = stats.size;
     artifacts[idx] = artifact;
     saveJSON(ARTIFACTS_FILE, artifacts);
 
@@ -934,7 +1128,7 @@ if(possibleHtmlPaths.length > 0) {
 } else {
   logger.warn('No index.html found. Dashboard will not be served.');
   app.get('/', (req, res) => {
-    res.json({ status: 'NOTEtoolsLM v2 Server Running', dashboard: 'Place index.html in public/ folder', endpoints: ['/api/status', '/api/prefabs', '/api/fleet', '/api/projects', '/api/queue', '/api/artifacts', '/api/artifacts/scan', '/api/scrape', '/api/auth/sync'] });
+    res.json({ status: 'NOTEtoolsLM v2 Server Running', dashboard: 'Place index.html in public/ folder', endpoints: ['/health', '/api/status', '/api/prefabs', '/api/fleet', '/api/projects', '/api/queue', '/api/artifacts', '/api/artifacts/scan', '/api/scrape', '/api/auth/register', '/api/auth/login', '/api/auth/refresh', '/api/auth/me', '/api/auth/sync'] });
   });
 }
 
@@ -1022,7 +1216,8 @@ process.on('unhandledRejection', (reason, promise) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  logger.info(`Fleet Orchestrator started`, { url: `http://localhost:${PORT}` });
+  const actualPort = server.address().port;
+  logger.info(`Fleet Orchestrator started`, { url: `http://localhost:${actualPort}` });
   logger.info('Data paths', { projects: PROJECTS_FILE, artifacts: ARTIFACTS_FILE });
   if(chokidar) logger.info('Ingestion watcher active', { dir: INGESTION_DIR });
 });

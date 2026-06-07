@@ -436,3 +436,86 @@ body {
 @media (min-width: 400px) {
   .vault-container { grid-template-columns: 1fr 1fr 1fr; }
 }
+
+/* ─── Login Overlay ─── */
+.login-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.login-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  width: 100%;
+  max-width: 260px;
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+
+.login-brand {
+  text-align: center;
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.login-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.login-tab {
+  flex: 1;
+  padding: 5px 8px;
+  border-radius: var(--radius2);
+  border: 1px solid var(--border);
+  background: var(--bg3);
+  color: var(--fg2);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.login-tab.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.login-form input {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: var(--radius2);
+  border: 1px solid var(--border);
+  background: var(--bg3);
+  color: var(--fg);
+  font-size: 12px;
+  font-family: inherit;
+  margin-bottom: 8px;
+  outline: none;
+}
+
+.login-form input:focus { border-color: var(--accent); }
+
+.login-form .btn {
+  width: 100%;
+  justify-content: center;
+  padding: 8px;
+  font-size: 12px;
+}
+
+.login-error {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--err);
+  text-align: center;
+  min-height: 16px;
+}

@@ -13,32 +13,33 @@
 - [x] Inspector panel with CDI score
 - [x] Onboarding flow
 
+## Completed Milestones
+
+### v2.2.0 — Server-Side Auth & Security
+- [x] JWT-based authentication with 7-day expiry
+- [x] User registration and login with bcrypt-hashed passwords
+- [x] SQLite user storage
+- [x] Token refresh endpoint
+- [x] Global auth middleware with public-path exceptions
+- [x] Brute-force protection via `express-slow-down`
+- [x] Password strength validation
+- [x] Account lockout after 5 failed attempts (15 min cooldown)
+- [x] Extension login gate with auto-refresh
+
 ## Upcoming Milestones
 
-### v2.1.0 — Backend Realization (In Progress)
-- [x] Replace simulated `processJob()` with real NotebookLM SDK artifact creation
-- [x] Add streaming progress from SDK (not timed delays)
-- [x] Retry logic for failed SDK calls
-- [x] Webhook support for async NotebookLM completion callbacks
+### v2.1.0 — Backend Realization
+- [ ] Replace simulated `processJob()` with real NotebookLM SDK artifact creation
+- [ ] Add streaming progress from SDK (not timed delays)
+- [ ] Retry logic for failed SDK calls
+- [ ] Webhook support for async NotebookLM completion callbacks
 
-### v2.2.0 — Monetization & Tiers
-- [ ] License key validation (server-side check)
-- [ ] Free tier gating (2 prefabs + manual sync)
-- [ ] Pro tier unlock (all 8 prefabs + auto-detect + priority queue)
-- [ ] Usage analytics (opt-in, local-only)
-
-### v2.3.0 — Chrome Web Store Launch 🚧 IN PROGRESS
-- [x] 1280×800 screenshot descriptions (5 required)
-- [x] Promo tile descriptions (small + large + marquee)
-- [x] Privacy policy page (HTML + Markdown)
-- [x] Store description + keyword optimization
-- [x] Demo GIF script
-- [x] Extension packaging script (`npm run package:extension`)
-- [x] Issue & PR templates
-- [x] Manifest updated to v2.0.0 with CWS `update_url`
-- [ ] Actual PNG screenshots rendered from descriptions
-- [ ] CWS developer account & submission
-- [ ] README CWS badge + install link
+### v2.3.0 — Chrome Web Store Launch
+- [ ] 1280×800 screenshots (5 required)
+- [ ] Promo tiles (small + large)
+- [ ] Privacy policy page
+- [ ] Store description + keyword optimization
+- [ ] Demo GIF for README
 
 ### v2.4.0 — Internationalization
 - [ ] Extract all strings to `_locales/`

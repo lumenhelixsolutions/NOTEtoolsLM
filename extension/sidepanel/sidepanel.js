@@ -2,18 +2,96 @@
 
 import { ARTIFACT_TYPES, PREFABS, FREE_PREFABS, MSG_ACTIONS, STORAGE_KEYS } from '../shared/constants.js';
 import { formatDate, formatBytes, escapeHtml, debounce } from '../shared/utils.js';
+import { localizeHtml } from '../shared/i18n.js';
+
+const _ = chrome.i18n.getMessage.bind(chrome.i18n);
+
+const API_BASE = 'http://localhost:3000';
+
+// ─── Auth State ───
+let authToken = null;
+let tokenExpiry = null;
+
+async function getToken() {
+  if (!authToken) {
+    const data = await chrome.storage.local.get([STORAGE_KEYS.token, STORAGE_KEYS.tokenExpiry]);
+    authToken = data[STORAGE_KEYS.token] || null;
+    tokenExpiry = data[STORAGE_KEYS.tokenExpiry] || null;
+  }
+  return authToken;
+}
+
+async function setToken(token) {
+  authToken = token;
+  // Decode expiry
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    tokenExpiry = payload.exp ? payload.exp * 1000 : null;
+  } catch (e) {
+    tokenExpiry = null;
+  }
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.token]: token,
+    [STORAGE_KEYS.tokenExpiry]: tokenExpiry
+  });
+}
+
+async function clearToken() {
+  authToken = null;
+  tokenExpiry = null;
+  await chrome.storage.local.remove([STORAGE_KEYS.token, STORAGE_KEYS.tokenExpiry]);
+}
+
+async function apiFetch(path, opts = {}) {
+  const token = await getToken();
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(opts.headers || {})
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const res = await fetch(`${API_BASE}${path}`, { ...opts, headers });
+  if (res.status === 401) {
+    await clearToken();
+    showLoginOverlay();
+    throw new Error('Session expired. Please sign in again.');
+  }
+  return res;
+}
+
+async function refreshTokenIfNeeded() {
+  const token = await getToken();
+  if (!token) return false;
+  if (!tokenExpiry) return false;
+  const threshold = 24 * 60 * 60 * 1000; // refresh if expiring within 24h
+  if (tokenExpiry - Date.now() > threshold) return true; // still good
+
+  try {
+    const res = await apiFetch('/api/auth/refresh', { method: 'POST' });
+    if (res.ok) {
+      const data = await res.json();
+      await setToken(data.token);
+      return true;
+    }
+  } catch (e) {
+    // fall through
+  }
+  await clearToken();
+  return false;
+}
 
 // ─── Onboarding Router ───
-// If user hasn't completed onboarding, redirect — don't load the main UI
-const data = await chrome.storage.local.get('plm:onboarded');
-if (data['plm:onboarded'] !== true) {
+const onboardData = await chrome.storage.local.get('plm:onboarded');
+if (onboardData['plm:onboarded'] !== true) {
   window.location.replace('onboard.html');
 } else {
-  // Only run the main app if onboarding is done
   runApp();
 }
 
 function runApp() {
+// Localize static HTML strings on load
+localizeHtml();
 
 // ─── State ───
 let artifacts = [];
@@ -25,12 +103,24 @@ let isPro = false;
 
 // ─── Init ───
 async function init() {
+  const token = await getToken();
+  if (!token) {
+    showLoginOverlay();
+    return;
+  }
+  const refreshed = await refreshTokenIfNeeded();
+  if (!refreshed) {
+    showLoginOverlay();
+    return;
+  }
+
   await loadState();
   renderVault();
   renderNotebookSelect();
   updateCounts();
   setupListeners();
   setupMessageListener();
+  setupLoginListeners();
 
   // Auto-scan if on notebooklm tab
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -38,6 +128,12 @@ async function init() {
   if (onNL) {
     document.getElementById('btn-sync').click();
   }
+
+  // Periodic token refresh check
+  setInterval(async () => {
+    const ok = await refreshTokenIfNeeded();
+    if (!ok) showLoginOverlay();
+  }, 60 * 60 * 1000);
 }
 
 // ─── Load state from storage ───
@@ -62,6 +158,105 @@ async function loadState() {
   }
 }
 
+// ─── Login Overlay ───
+function showLoginOverlay() {
+  const overlay = document.getElementById('login-overlay');
+  if (overlay) overlay.style.display = 'flex';
+}
+
+function hideLoginOverlay() {
+  const overlay = document.getElementById('login-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function setupLoginListeners() {
+  const tabLogin = document.getElementById('tab-login');
+  const tabRegister = document.getElementById('tab-register');
+  const formLogin = document.getElementById('form-login');
+  const formRegister = document.getElementById('form-register');
+
+  if (!tabLogin || !tabRegister) return;
+
+  tabLogin.addEventListener('click', () => {
+    tabLogin.classList.add('active');
+    tabRegister.classList.remove('active');
+    formLogin.style.display = 'block';
+    formRegister.style.display = 'none';
+  });
+
+  tabRegister.addEventListener('click', () => {
+    tabRegister.classList.add('active');
+    tabLogin.classList.remove('active');
+    formRegister.style.display = 'block';
+    formLogin.style.display = 'none';
+  });
+
+  document.getElementById('btn-login').addEventListener('click', async () => {
+    const username = document.getElementById('login-username').value.trim();
+    const password = document.getElementById('login-password').value;
+    const errEl = document.getElementById('login-error');
+    errEl.textContent = '';
+    if (!username || !password) {
+      errEl.textContent = 'Enter username and password';
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        errEl.textContent = data.error || 'Login failed';
+        return;
+      }
+      await setToken(data.token);
+      hideLoginOverlay();
+      init();
+    } catch (e) {
+      errEl.textContent = 'Network error. Is the server running?';
+    }
+  });
+
+  document.getElementById('btn-register').addEventListener('click', async () => {
+    const username = document.getElementById('reg-username').value.trim();
+    const password = document.getElementById('reg-password').value;
+    const password2 = document.getElementById('reg-password2').value;
+    const errEl = document.getElementById('register-error');
+    errEl.textContent = '';
+    if (!username || !password) {
+      errEl.textContent = 'Enter username and password';
+      return;
+    }
+    if (password !== password2) {
+      errEl.textContent = 'Passwords do not match';
+      return;
+    }
+    if (password.length < 8 || !/[A-Z]/.test(password) || !/[0-9]/.test(password)) {
+      errEl.textContent = 'Password must be 8+ chars with 1 uppercase and 1 number';
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        errEl.textContent = data.error || 'Registration failed';
+        return;
+      }
+      await setToken(data.token);
+      hideLoginOverlay();
+      init();
+    } catch (e) {
+      errEl.textContent = 'Network error. Is the server running?';
+    }
+  });
+}
+
 // ─── Setup DOM listeners ───
 function setupListeners() {
   // Notebook select
@@ -81,24 +276,24 @@ function setupListeners() {
       // Find notebooklm tab and request scan
       const tabs = await chrome.tabs.query({ url: '*://notebooklm.google.com/*' });
       if (tabs.length === 0) {
-        showToast('Open notebooklm.google.com first', 'err');
+        showToast(_('openNotebookLMFirst'), 'err');
         return;
       }
       const resp = await chrome.tabs.sendMessage(tabs[0].id, { action: MSG_ACTIONS.SCAN_REQUEST });
       if (resp?.count) {
-        showToast(`Found ${resp.count} artifacts`, 'ok');
+        showToast(_('foundArtifacts', String(resp.count)), 'ok');
         await loadState();
         renderVault();
         updateCounts();
         renderNotebookSelect();
       } else {
-        showToast('No artifacts found on page', 'ok');
+        showToast(_('noArtifactsFoundOnPage'), 'ok');
       }
     } catch (e) {
-      showToast('Could not reach page. Refresh NotebookLM.', 'err');
+      showToast(_('couldNotReachPage'), 'err');
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Sync';
+      btn.textContent = _('sync');
     }
   });
 
@@ -141,7 +336,7 @@ function setupMessageListener() {
         renderVault();
         updateCounts();
         renderNotebookSelect();
-        if (msg.added > 0) showToast(`${msg.added} new artifact(s)`, 'ok');
+        if (msg.added > 0) showToast(_('newArtifacts', String(msg.added)), 'ok');
       });
     }
   });
@@ -221,26 +416,26 @@ function renderVault() {
 async function handleCardAction(action, id) {
   switch (action) {
     case 'store':
-      showToast('Storing...', 'ok');
+      showToast(_('storing'), 'ok');
       await chrome.runtime.sendMessage({ action: MSG_ACTIONS.ARTIFACT_STORE, artifactId: id });
       await loadState();
       renderVault();
       showInspector(id);
-      showToast('Stored to vault', 'ok');
+      showToast(_('storedToVault'), 'ok');
       break;
     case 'dl':
-      showToast('Downloading...', 'ok');
+      showToast(_('downloading'), 'ok');
       await chrome.runtime.sendMessage({ action: MSG_ACTIONS.ARTIFACT_DOWNLOAD, artifactId: id });
-      showToast('Download started', 'ok');
+      showToast(_('downloadStarted'), 'ok');
       break;
     case 'del':
-      if (!confirm('Delete this artifact?')) return;
+      if (!confirm(_('deleteThisArtifact'))) return;
       await chrome.runtime.sendMessage({ action: MSG_ACTIONS.ARTIFACT_DELETE, artifactId: id });
       selectedArtifactId = null;
       await loadState();
       renderVault();
       hideInspector();
-      showToast('Deleted', 'ok');
+      showToast(_('deleted'), 'ok');
       break;
     case 'inspect':
       selectedArtifactId = id;
@@ -260,34 +455,34 @@ function showInspector(id) {
 
   document.getElementById('inspector-body').innerHTML = `
     <div class="field">
-      <div class="field-label">Title</div>
+      <div class="field-label">${_('titleLabel')}</div>
       <div class="field-value">${escapeHtml(art.title)}</div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
       <div class="field">
-        <div class="field-label">Type</div>
+        <div class="field-label">${_('typeLabel')}</div>
         <div class="field-value" style="color:${typeInfo.color};">${typeInfo.icon} ${typeInfo.label}</div>
       </div>
       <div class="field">
-        <div class="field-label">Status</div>
-        <div class="field-value">${isStored ? '&#10003; Stored' : '&#9729; Cloud'}</div>
+        <div class="field-label">${_('statusLabel')}</div>
+        <div class="field-value">${isStored ? '&#10003; ' + _('statusStored') : '&#9729; ' + _('statusCloud')}</div>
       </div>
       <div class="field">
-        <div class="field-label">Notebook</div>
-        <div class="field-value">${escapeHtml(art.notebookName || 'Unknown')}</div>
+        <div class="field-label">${_('notebookLabel')}</div>
+        <div class="field-value">${escapeHtml(art.notebookName || _('unknown'))}</div>
       </div>
       <div class="field">
-        <div class="field-label">Discovered</div>
+        <div class="field-label">${_('discoveredLabel')}</div>
         <div class="field-value">${formatDate(art.discoveredAt)}</div>
       </div>
     </div>
-    ${art.prompt ? `<div class="field"><div class="field-label">Prompt</div><div class="field-value prompt">${escapeHtml(art.prompt)}</div></div>` : ''}
+    ${art.prompt ? `<div class="field"><div class="field-label">${_('promptLabel')}</div><div class="field-value prompt">${escapeHtml(art.prompt)}</div></div>` : ''}
   `;
 
   document.getElementById('inspector-actions').innerHTML = `
-    ${!isStored ? `<button class="btn primary" data-action="store" data-id="${id}">&#128190; Store</button>` : ''}
-    <button class="btn" data-action="dl" data-id="${id}">&#11123; Download</button>
-    <button class="btn" data-action="del" data-id="${id}">&#128465; Delete</button>
+    ${!isStored ? `<button class="btn primary" data-action="store" data-id="${id}">&#128190; ${_('store')}</button>` : ''}
+    <button class="btn" data-action="dl" data-id="${id}">&#11123; ${_('download')}</button>
+    <button class="btn" data-action="del" data-id="${id}">&#128465; ${_('delete')}</button>
   `;
 
   document.getElementById('inspector-actions').querySelectorAll('[data-action]').forEach(btn => {
@@ -321,7 +516,7 @@ function updateCounts() {
 function renderNotebookSelect() {
   const sel = document.getElementById('notebook-select');
   const current = sel.value;
-  sel.innerHTML = '<option value="">All Notebooks</option>';
+  sel.innerHTML = '<option value="">' + _('allNotebooks') + '</option>';
   for (const nb of notebooks) {
     const opt = document.createElement('option');
     opt.value = nb.id;
@@ -352,7 +547,7 @@ async function saveSettings() {
 
   await chrome.storage.local.set({ [STORAGE_KEYS.settings]: settings });
   closeSettings();
-  showToast('Settings saved', 'ok');
+  showToast(_('settingsSaved'), 'ok');
 }
 
 // ─── Toast ───

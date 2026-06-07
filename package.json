@@ -1,6 +1,6 @@
 {
   "name": "notetoolslm",
-  "version": "2.0.0",
+  "version": "2.2.0",
   "description": "The ultimate open-source orchestration suite for Google NotebookLM — fleet dashboard, browser extension, and local vault.",
   "main": "server.js",
   "scripts": {
@@ -33,13 +33,16 @@
   },
   "homepage": "https://github.com/notetoolslm/notetoolslm#readme",
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "c8": "^11.0.0",
     "chokidar": "^3.5.3",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "express-rate-limit": "^8.5.2",
+    "express-slow-down": "^3.1.0",
     "helmet": "^8.2.0",
     "js-yaml": "^4.1.0",
+    "jsonwebtoken": "^9.0.3",
     "notebooklm-sdk": "^0.1.0",
     "playwright": "^1.40.0",
     "swagger-ui-express": "^5.0.1",
