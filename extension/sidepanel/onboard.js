@@ -1,4 +1,4 @@
-// PipelineLM Pro — Onboarding Controller
+// NOTEtoolsLM — Onboarding Controller
 
 const TOTAL = 5;
 let current = 0;

@@ -1,4 +1,4 @@
-// PipelineLM Pro — Shared Constants
+// NOTEtoolsLM — Shared Constants
 
 export const ARTIFACT_TYPES = {
   audio:      { label: 'Audio',      icon: '\uD83C\uDF99', color: '#3b82f6', ext: 'mp3' },

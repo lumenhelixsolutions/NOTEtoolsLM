@@ -1,4 +1,4 @@
-// PipelineLM Pro — Side Panel Controller
+// NOTEtoolsLM — Side Panel Controller
 
 import { ARTIFACT_TYPES, PREFABS, FREE_PREFABS, MSG_ACTIONS, STORAGE_KEYS } from '../shared/constants.js';
 import { formatDate, formatBytes, escapeHtml, debounce } from '../shared/utils.js';

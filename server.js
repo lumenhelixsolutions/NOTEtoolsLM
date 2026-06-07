@@ -1,7 +1,7 @@
 /**
  * NOTEtoolsLM v2 — Fleet Orchestrator
  * Unified Express + WebSocket Server
- * Merged from PipelineLM Pro (plinepro_kimi + plpv2)
+ * Merged from NOTEtoolsLM (plinepro_kimi + plpv2)
  *
  * Port: process.env.PORT || 3000
  * REST + WS share the same HTTP instance.
@@ -29,7 +29,7 @@ try { rateLimit = require('express-rate-limit'); } catch(e) { console.warn('[WAR
 // ─── Internal modules ───
 const { Logger } = require('./lib/logger');
 const { JobQueue } = require('./lib/queue');
-const { getSdkClient, getCapabilities, resetSdk } = require('./lib/sdk-wrapper');
+const { getSdkClient, getCapabilities, resetSdk, checkAuth } = require('./lib/sdk-wrapper');
 
 const logger = new Logger('server');
 
@@ -241,6 +241,28 @@ app.get('/api/status', (req, res) => {
     healthLog: healthLog.slice(0, 10),
     timestamp: new Date().toISOString()
   });
+});
+
+// ─── SDK Status ───
+app.get('/api/sdk-status', async (req, res) => {
+  try {
+    const auth = await checkAuth();
+    res.json({
+      sdkAvailable: auth.sdkAvailable,
+      authenticated: auth.authenticated,
+      userInfo: auth.userInfo,
+      capabilities: getCapabilities(),
+      timestamp: new Date().toISOString()
+    });
+  } catch (e) {
+    res.status(500).json({
+      sdkAvailable: false,
+      authenticated: false,
+      userInfo: null,
+      error: e.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // ─── Auth Sync ───

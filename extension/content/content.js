@@ -1,4 +1,4 @@
-// PipelineLM Pro — Content Script
+// NOTEtoolsLM — Content Script
 // Runs on notebooklm.google.com: scrapes artifacts, injects toolbar, injects prefabs
 
 const TYPE_MAP = {
@@ -245,7 +245,7 @@ function injectToolbar() {
       .plm-tb-prefab .emoji { font-size:18px; display:block; margin-bottom:3px; }
       .plm-tb-prefab .name { font-size:10px; }
     </style>
-    <div class="plm-tb-collapsed" id="plm-tb-toggle" title="PipelineLM">&#9889;</div>
+    <div class="plm-tb-collapsed" id="plm-tb-toggle" title="NOTEtoolsLM">&#9889;</div>
     <div class="plm-tb-expanded" id="plm-tb-body" style="display:none;">
       <div class="plm-tb-header">
         <span class="plm-tb-title">&#9889; Quick Launch</span>

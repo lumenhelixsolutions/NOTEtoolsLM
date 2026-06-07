@@ -1,4 +1,4 @@
-// PipelineLM Pro — Background Service Worker
+// NOTEtoolsLM — Background Service Worker
 // Event hub, storage sync, download manager
 
 import { MSG_ACTIONS, STORAGE_KEYS } from '../shared/constants.js';
@@ -30,7 +30,7 @@ chrome.action.onClicked.addListener(async (tab) => {
 chrome.runtime.onStartup.addListener(() => {
   chrome.contextMenus.create({
     id: 'open-vault',
-    title: 'Open PipelineLM Vault',
+    title: 'Open NOTEtoolsLM Vault',
     contexts: ['action']
   });
 });
