@@ -67,7 +67,9 @@ export const STORAGE_KEYS = {
   settings: 'plm:settings',
   session: 'plm:session',
   token: 'plm:token',
-  tokenExpiry: 'plm:tokenExpiry'
+  tokenExpiry: 'plm:tokenExpiry',
+  workspaces: 'plm:workspaces',
+  activeWorkspace: 'plm:activeWorkspace'
 };
 
 export const MSG_ACTIONS = {

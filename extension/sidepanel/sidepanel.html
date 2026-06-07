@@ -21,6 +21,13 @@
     </div>
   </div>
 
+  <!-- Workspace Selector -->
+  <div class="workspace-bar">
+    <select class="workspace-select" id="workspace-select">
+      <option value="" data-i18n="personalWorkspace">Personal</option>
+    </select>
+  </div>
+
   <!-- Controls -->
   <div class="controls">
     <div class="notebook-row">
@@ -86,6 +93,19 @@
         <div class="modal-row">
           <div class="modal-label" data-i18n="vaultFolder">Vault Folder</div>
           <input class="modal-input" id="setting-vaultpath" placeholder="~/Downloads/vault-storage/" data-i18n-placeholder="vaultPathPlaceholder" />
+        </div>
+        <div class="modal-row" id="members-section" style="display:none;">
+          <div class="modal-label" data-i18n="members">Members</div>
+          <div id="members-list" class="members-list"></div>
+          <div style="display:flex;gap:6px;margin-top:8px;">
+            <input class="modal-input" id="member-username" placeholder="Username" data-i18n-placeholder="username" style="flex:1;" />
+            <select class="modal-input" id="member-role" style="width:90px;">
+              <option value="viewer" data-i18n="viewer">Viewer</option>
+              <option value="editor" data-i18n="editor">Editor</option>
+              <option value="admin" data-i18n="admin">Admin</option>
+            </select>
+            <button class="btn primary sm" id="btn-add-member" data-i18n="addMember">Add</button>
+          </div>
         </div>
       </div>
       <div class="modal-footer">

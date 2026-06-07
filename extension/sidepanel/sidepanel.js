@@ -100,6 +100,8 @@ let settings = {};
 let session = { filterType: 'all', activeNotebookId: '' };
 let selectedArtifactId = null;
 let isPro = false;
+let workspaces = [];
+let activeWorkspaceId = null;
 
 // ─── Init ───
 async function init() {
@@ -115,6 +117,8 @@ async function init() {
   }
 
   await loadState();
+  await loadWorkspaces();
+  renderWorkspaceSelect();
   renderVault();
   renderNotebookSelect();
   updateCounts();
@@ -142,12 +146,14 @@ async function loadState() {
     STORAGE_KEYS.artifacts,
     STORAGE_KEYS.notebooks,
     STORAGE_KEYS.settings,
-    STORAGE_KEYS.session
+    STORAGE_KEYS.session,
+    STORAGE_KEYS.activeWorkspace
   ]);
   artifacts = data[STORAGE_KEYS.artifacts] || [];
   notebooks = data[STORAGE_KEYS.notebooks] || [];
   settings = data[STORAGE_KEYS.settings] || { vaultPath: '', autoSync: true, licenseKey: '' };
   session = data[STORAGE_KEYS.session] || { filterType: 'all', activeNotebookId: '' };
+  activeWorkspaceId = data[STORAGE_KEYS.activeWorkspace] || null;
 
   // Check license
   isPro = settings.licenseKey && settings.licenseKey.startsWith('PLM-');
@@ -155,6 +161,37 @@ async function loadState() {
   // Restore UI state
   if (session.activeNotebookId) {
     document.getElementById('notebook-select').value = session.activeNotebookId;
+  }
+}
+
+// ─── Workspaces ───
+async function loadWorkspaces() {
+  try {
+    const res = await apiFetch('/api/workspaces');
+    if (res.ok) {
+      workspaces = await res.json();
+      await chrome.storage.local.set({ [STORAGE_KEYS.workspaces]: workspaces });
+    }
+  } catch (e) {
+    // offline fallback
+    const data = await chrome.storage.local.get(STORAGE_KEYS.workspaces);
+    workspaces = data[STORAGE_KEYS.workspaces] || [];
+  }
+}
+
+function renderWorkspaceSelect() {
+  const sel = document.getElementById('workspace-select');
+  if (!sel) return;
+  sel.innerHTML = `<option value="">${_('personalWorkspace')}</option>`;
+  for (const ws of workspaces) {
+    const opt = document.createElement('option');
+    opt.value = ws.id;
+    opt.textContent = ws.name;
+    if (ws.member_role) opt.textContent += ` (${_(ws.member_role)})`;
+    sel.appendChild(opt);
+  }
+  if (activeWorkspaceId) {
+    sel.value = activeWorkspaceId;
   }
 }
 
@@ -264,6 +301,36 @@ function setupListeners() {
     session.activeNotebookId = e.target.value;
     saveSession();
     renderVault();
+  });
+
+  // Workspace select
+  document.getElementById('workspace-select').addEventListener('change', async (e) => {
+    activeWorkspaceId = e.target.value ? parseInt(e.target.value, 10) : null;
+    await chrome.storage.local.set({ [STORAGE_KEYS.activeWorkspace]: activeWorkspaceId });
+    showToast(activeWorkspaceId ? _('workspace') + ': ' + (workspaces.find(w => w.id === activeWorkspaceId)?.name || '') : _('personalWorkspace'), 'ok');
+  });
+
+  // Add member
+  document.getElementById('btn-add-member').addEventListener('click', async () => {
+    const username = document.getElementById('member-username').value.trim();
+    const role = document.getElementById('member-role').value;
+    if (!username || !activeWorkspaceId) return;
+    try {
+      const res = await apiFetch(`/api/workspaces/${activeWorkspaceId}/members`, {
+        method: 'POST',
+        body: JSON.stringify({ username, role })
+      });
+      if (res.ok) {
+        showToast(_('memberAdded'), 'ok');
+        document.getElementById('member-username').value = '';
+        await renderMembersList();
+      } else {
+        const data = await res.json();
+        showToast(data.error || 'Failed', 'err');
+      }
+    } catch (e) {
+      showToast('Network error', 'err');
+    }
   });
 
   // Sync button
@@ -532,6 +599,57 @@ function openSettings() {
   document.getElementById('setting-autosync').checked = settings.autoSync !== false;
   document.getElementById('setting-vaultpath').value = settings.vaultPath || '';
   document.getElementById('modal-settings').classList.add('visible');
+  renderMembersList();
+}
+
+async function renderMembersList() {
+  const section = document.getElementById('members-section');
+  const list = document.getElementById('members-list');
+  if (!section || !list) return;
+
+  if (!activeWorkspaceId) {
+    section.style.display = 'none';
+    return;
+  }
+
+  const workspace = workspaces.find(w => w.id === activeWorkspaceId);
+  const isAdmin = workspace && workspace.member_role === 'admin';
+  section.style.display = 'block';
+  document.getElementById('btn-add-member').style.display = isAdmin ? 'inline-block' : 'none';
+  document.getElementById('member-username').style.display = isAdmin ? 'inline-block' : 'none';
+  document.getElementById('member-role').style.display = isAdmin ? 'inline-block' : 'none';
+
+  try {
+    const res = await apiFetch(`/api/workspaces/${activeWorkspaceId}/members`);
+    if (!res.ok) {
+      list.innerHTML = '<div style="color:var(--fg3);font-size:11px;">Failed to load</div>';
+      return;
+    }
+    const members = await res.json();
+    list.innerHTML = members.map(m => `
+      <div class="member-row" style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--bg3);font-size:12px;">
+        <span>${escapeHtml(m.username)} <span style="color:var(--fg3);font-size:10px;">(${_(m.role)})</span></span>
+        ${isAdmin && m.user_id !== workspace.owner_id ? `<button class="btn ghost sm" data-remove-member="${m.user_id}">${_('remove')}</button>` : ''}
+      </div>
+    `).join('');
+
+    list.querySelectorAll('[data-remove-member]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const userId = parseInt(btn.dataset.removeMember, 10);
+        try {
+          const res = await apiFetch(`/api/workspaces/${activeWorkspaceId}/members/${userId}`, { method: 'DELETE' });
+          if (res.ok) {
+            showToast(_('memberRemoved'), 'ok');
+            await renderMembersList();
+          }
+        } catch (e) {
+          showToast('Network error', 'err');
+        }
+      });
+    });
+  } catch (e) {
+    list.innerHTML = '<div style="color:var(--fg3);font-size:11px;">Offline</div>';
+  }
 }
 
 function closeSettings() {

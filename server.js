@@ -38,6 +38,13 @@ const {
   getUserByUsername, getUserById, createUser, verifyPassword
 } = require('./lib/auth');
 
+const {
+  createWorkspace, getWorkspaceById, listWorkspacesForUser,
+  updateWorkspace, deleteWorkspace,
+  addWorkspaceMember, getWorkspaceMember, listWorkspaceMembers,
+  removeWorkspaceMember, updateWorkspaceMemberRole
+} = require('./lib/db');
+
 const logger = new Logger('server');
 
 // ─── SDK ───
@@ -252,6 +259,33 @@ function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
 }
 
+// ─── Workspace RBAC Middleware ───
+async function requireWorkspaceMember(req, res, next) {
+  const workspaceId = parseInt(req.params.id, 10);
+  if (isNaN(workspaceId)) {
+    return res.status(400).json({ error: 'Invalid workspace ID' });
+  }
+  const member = getWorkspaceMember(workspaceId, req.userId);
+  if (!member) {
+    return res.status(403).json({ error: 'Forbidden', detail: 'You are not a member of this workspace' });
+  }
+  req.workspaceId = workspaceId;
+  req.workspaceRole = member.role;
+  next();
+}
+
+function requireWorkspaceRole(minRole) {
+  const hierarchy = { viewer: 0, editor: 1, admin: 2 };
+  const minLevel = hierarchy[minRole] ?? 0;
+  return (req, res, next) => {
+    const level = hierarchy[req.workspaceRole] ?? 0;
+    if (level < minLevel) {
+      return res.status(403).json({ error: 'Forbidden', detail: `Requires ${minRole} role or higher` });
+    }
+    next();
+  };
+}
+
 async function getLegacySdkClient() {
   if(sdkClient && sdkAuthed) return sdkClient;
   if(!NotebookLMClient) throw new Error('notebooklm-sdk not installed');
@@ -443,7 +477,11 @@ app.post('/api/webhook/notebooklm', (req, res) => {
   const payload = req.body; // Buffer because of express.raw
   const expected = crypto.createHmac('sha256', secret).update(payload).digest('hex');
   const sig = signature.replace(/^sha256=/, '');
-  if (!sig || !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(sig))) {
+  try {
+    if (!sig || Buffer.from(expected).length !== Buffer.from(sig).length || !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(sig))) {
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+  } catch (e) {
     return res.status(401).json({ error: 'Invalid signature' });
   }
   let data;
@@ -470,6 +508,150 @@ app.post('/api/webhook/notebooklm', (req, res) => {
     res.json({ success: true });
   } else {
     res.json({ success: true, note: 'Job not found' });
+  }
+});
+
+// ─── Workspaces ───
+app.get('/api/workspaces', (req, res) => {
+  try {
+    const workspaces = listWorkspacesForUser(req.userId);
+    res.json(workspaces);
+  } catch (e) {
+    logger.error('List workspaces failed', { error: e.message });
+    res.status(500).json({ error: 'Failed to list workspaces' });
+  }
+});
+
+app.post('/api/workspaces', (req, res) => {
+  const { name } = req.body || {};
+  if (!name || typeof name !== 'string') {
+    return res.status(400).json({ error: 'Workspace name is required' });
+  }
+  try {
+    const workspace = createWorkspace(name.trim(), req.userId);
+    logger.info('Workspace created', { workspaceId: workspace.id, ownerId: req.userId });
+    res.status(201).json(workspace);
+  } catch (e) {
+    logger.error('Create workspace failed', { error: e.message });
+    res.status(500).json({ error: 'Failed to create workspace' });
+  }
+});
+
+app.get('/api/workspaces/:id', authMiddleware, async (req, res, next) => {
+  // Use requireWorkspaceMember manually for this route
+  const workspaceId = parseInt(req.params.id, 10);
+  if (isNaN(workspaceId)) return res.status(400).json({ error: 'Invalid workspace ID' });
+  const member = getWorkspaceMember(workspaceId, req.userId);
+  if (!member) return res.status(403).json({ error: 'Forbidden' });
+  const workspace = getWorkspaceById(workspaceId);
+  if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+  res.json({ ...workspace, member_role: member.role });
+});
+
+app.put('/api/workspaces/:id', authMiddleware, async (req, res, next) => {
+  const workspaceId = parseInt(req.params.id, 10);
+  if (isNaN(workspaceId)) return res.status(400).json({ error: 'Invalid workspace ID' });
+  const member = getWorkspaceMember(workspaceId, req.userId);
+  if (!member) return res.status(403).json({ error: 'Forbidden' });
+  if (member.role !== 'admin') return res.status(403).json({ error: 'Forbidden', detail: 'Requires admin role' });
+  try {
+    const workspace = updateWorkspace(workspaceId, req.body);
+    res.json(workspace);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to update workspace' });
+  }
+});
+
+app.delete('/api/workspaces/:id', authMiddleware, async (req, res, next) => {
+  const workspaceId = parseInt(req.params.id, 10);
+  if (isNaN(workspaceId)) return res.status(400).json({ error: 'Invalid workspace ID' });
+  const member = getWorkspaceMember(workspaceId, req.userId);
+  if (!member) return res.status(403).json({ error: 'Forbidden' });
+  if (member.role !== 'admin') return res.status(403).json({ error: 'Forbidden', detail: 'Requires admin role' });
+  try {
+    deleteWorkspace(workspaceId);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to delete workspace' });
+  }
+});
+
+// ─── Workspace Members ───
+app.post('/api/workspaces/:id/members', authMiddleware, async (req, res, next) => {
+  const workspaceId = parseInt(req.params.id, 10);
+  if (isNaN(workspaceId)) return res.status(400).json({ error: 'Invalid workspace ID' });
+  const member = getWorkspaceMember(workspaceId, req.userId);
+  if (!member) return res.status(403).json({ error: 'Forbidden' });
+  if (member.role !== 'admin') return res.status(403).json({ error: 'Forbidden', detail: 'Requires admin role' });
+
+  const { username, role = 'viewer' } = req.body || {};
+  if (!username) return res.status(400).json({ error: 'Username is required' });
+  if (!['viewer', 'editor', 'admin'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+
+  const user = getUserByUsername(username);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  const existing = getWorkspaceMember(workspaceId, user.id);
+  if (existing) return res.status(409).json({ error: 'User is already a member' });
+
+  try {
+    addWorkspaceMember(workspaceId, user.id, role);
+    res.status(201).json({ workspace_id: workspaceId, user_id: user.id, username: user.username, role });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to add member' });
+  }
+});
+
+app.get('/api/workspaces/:id/members', authMiddleware, async (req, res, next) => {
+  const workspaceId = parseInt(req.params.id, 10);
+  if (isNaN(workspaceId)) return res.status(400).json({ error: 'Invalid workspace ID' });
+  const member = getWorkspaceMember(workspaceId, req.userId);
+  if (!member) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const members = listWorkspaceMembers(workspaceId);
+    res.json(members);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to list members' });
+  }
+});
+
+app.delete('/api/workspaces/:id/members/:userId', authMiddleware, async (req, res, next) => {
+  const workspaceId = parseInt(req.params.id, 10);
+  const targetUserId = parseInt(req.params.userId, 10);
+  if (isNaN(workspaceId) || isNaN(targetUserId)) return res.status(400).json({ error: 'Invalid ID' });
+  const member = getWorkspaceMember(workspaceId, req.userId);
+  if (!member) return res.status(403).json({ error: 'Forbidden' });
+  if (member.role !== 'admin') return res.status(403).json({ error: 'Forbidden', detail: 'Requires admin role' });
+
+  const workspace = getWorkspaceById(workspaceId);
+  if (workspace && workspace.owner_id === targetUserId) {
+    return res.status(403).json({ error: 'Cannot remove workspace owner' });
+  }
+
+  try {
+    removeWorkspaceMember(workspaceId, targetUserId);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to remove member' });
+  }
+});
+
+app.put('/api/workspaces/:id/members/:userId', authMiddleware, async (req, res, next) => {
+  const workspaceId = parseInt(req.params.id, 10);
+  const targetUserId = parseInt(req.params.userId, 10);
+  if (isNaN(workspaceId) || isNaN(targetUserId)) return res.status(400).json({ error: 'Invalid ID' });
+  const member = getWorkspaceMember(workspaceId, req.userId);
+  if (!member) return res.status(403).json({ error: 'Forbidden' });
+  if (member.role !== 'admin') return res.status(403).json({ error: 'Forbidden', detail: 'Requires admin role' });
+
+  const { role } = req.body || {};
+  if (!['viewer', 'editor', 'admin'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+
+  try {
+    const updated = updateWorkspaceMemberRole(workspaceId, targetUserId, role);
+    res.json(updated);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to update role' });
   }
 });
 
@@ -1128,7 +1310,7 @@ if(possibleHtmlPaths.length > 0) {
 } else {
   logger.warn('No index.html found. Dashboard will not be served.');
   app.get('/', (req, res) => {
-    res.json({ status: 'NOTEtoolsLM v2 Server Running', dashboard: 'Place index.html in public/ folder', endpoints: ['/health', '/api/status', '/api/prefabs', '/api/fleet', '/api/projects', '/api/queue', '/api/artifacts', '/api/artifacts/scan', '/api/scrape', '/api/auth/register', '/api/auth/login', '/api/auth/refresh', '/api/auth/me', '/api/auth/sync'] });
+    res.json({ status: 'NOTEtoolsLM v2 Server Running', dashboard: 'Place index.html in public/ folder', endpoints: ['/health', '/api/status', '/api/prefabs', '/api/fleet', '/api/projects', '/api/queue', '/api/artifacts', '/api/artifacts/scan', '/api/scrape', '/api/auth/register', '/api/auth/login', '/api/auth/refresh', '/api/auth/me', '/api/auth/sync', '/api/workspaces', '/api/workspaces/:id/members'] });
   });
 }
 

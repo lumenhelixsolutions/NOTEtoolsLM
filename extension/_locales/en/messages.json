@@ -98,5 +98,21 @@
   "openNOTEtoolsLM": { "message": "Open NOTEtoolsLM", "description": "Start button" },
   "back": { "message": "Back", "description": "Back button" },
   "next": { "message": "Next", "description": "Next button" },
-  "licenseKeyInvalid": { "message": "License key should start with PLM-", "description": "License validation alert" }
+  "licenseKeyInvalid": { "message": "License key should start with PLM-", "description": "License validation alert" },
+
+  "workspace": { "message": "Workspace", "description": "Workspace label" },
+  "personalWorkspace": { "message": "Personal", "description": "Personal workspace label" },
+  "switchWorkspace": { "message": "Switch workspace", "description": "Workspace selector tooltip" },
+  "members": { "message": "Members", "description": "Members section title" },
+  "addMember": { "message": "Add Member", "description": "Add member button" },
+  "username": { "message": "Username", "description": "Username label" },
+  "role": { "message": "Role", "description": "Role label" },
+  "viewer": { "message": "Viewer", "description": "Viewer role" },
+  "editor": { "message": "Editor", "description": "Editor role" },
+  "admin": { "message": "Admin", "description": "Admin role" },
+  "remove": { "message": "Remove", "description": "Remove button" },
+  "memberAdded": { "message": "Member added", "description": "Toast after adding member" },
+  "memberRemoved": { "message": "Member removed", "description": "Toast after removing member" },
+  "roleUpdated": { "message": "Role updated", "description": "Toast after updating role" },
+  "noWorkspaces": { "message": "No workspaces", "description": "Empty workspace state" }
 }

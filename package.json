@@ -10,7 +10,10 @@
     "lint": "echo 'Lint check passed'",
     "ci": "npm run lint && npm run test",
     "package:extension": "node scripts/package-extension.js",
-    "build": "npm run package:extension"
+    "build": "npm run package:extension",
+    "build:firefox": "node scripts/build-firefox.js",
+    "build:edge": "npm run package:extension && echo 'Edge uses the same package as Chrome (MV3). Ready at dist/extension.zip'",
+    "build:desktop": "echo 'Tauri desktop build not yet implemented. Configure desktop/tauri/ and run: cd desktop/tauri && cargo tauri build'"
   },
   "keywords": [
     "notebooklm",

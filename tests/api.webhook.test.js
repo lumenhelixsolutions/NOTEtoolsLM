@@ -3,6 +3,9 @@ const assert = require('node:assert');
 const http = require('http');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
 let serverProcess;
 let baseUrl;
@@ -32,6 +35,8 @@ function request(path, method, body, headers = {}) {
 function get(path, headers) { return request(path, 'GET', null, headers); }
 function post(path, body, headers) { return request(path, 'POST', body, headers); }
 
+const DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'notetools-webhook-'));
+
 before(async () => {
   serverProcess = spawn('node', ['server.js'], {
     cwd: process.cwd(),
@@ -39,7 +44,8 @@ before(async () => {
       ...process.env,
       PORT: '0',
       USE_SIMULATION: 'true',
-      NOTEBOOKLM_WEBHOOK_SECRET: 'test-secret'
+      NOTEBOOKLM_WEBHOOK_SECRET: 'test-secret',
+      DATA_DIR
     }
   });
 
@@ -63,7 +69,7 @@ before(async () => {
 
   // Register and login
   const reg = await post('/api/auth/register', { username: 'webhookuser', password: 'Test1234!' });
-  if (reg.status !== 200 && !reg.body?.error?.includes('exists')) {
+  if (![200, 201].includes(reg.status) && !reg.body?.error?.includes('exists')) {
     throw new Error('Registration failed: ' + JSON.stringify(reg.body));
   }
   const login = await post('/api/auth/login', { username: 'webhookuser', password: 'Test1234!' });
@@ -73,6 +79,7 @@ before(async () => {
 
 after(() => {
   if (serverProcess) serverProcess.kill();
+  try { fs.rmSync(DATA_DIR, { recursive: true, force: true }); } catch (e) {}
 });
 
 test('webhook rejects invalid signature', async () => {
