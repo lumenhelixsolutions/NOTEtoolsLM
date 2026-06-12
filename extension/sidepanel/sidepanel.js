@@ -1,8 +1,10 @@
 // NOTEtoolsLM — Side Panel Controller
 
 import { ARTIFACT_TYPES, PREFABS, FREE_PREFABS, MSG_ACTIONS, STORAGE_KEYS } from '../shared/constants.js';
+import { mergeArtifactsIntoCatalog } from '../shared/artifact-catalog.js';
 import { formatDate, formatBytes, escapeHtml, debounce } from '../shared/utils.js';
 import { localizeHtml } from '../shared/i18n.js';
+import { buildSourceMarkdown, summarizeExport } from '../shared/sources-export.js';
 
 const _ = chrome.i18n.getMessage.bind(chrome.i18n);
 
@@ -102,6 +104,12 @@ let selectedArtifactId = null;
 let isPro = false;
 let workspaces = [];
 let activeWorkspaceId = null;
+let sourceExports = [];
+let sourcesView = 'list';
+let activeExportId = null;
+let activeSourceIndex = null;
+let extractionInProgress = false;
+let activePanel = 'artifacts';
 
 // ─── Init ───
 async function init() {
@@ -117,12 +125,17 @@ async function init() {
   }
 
   await loadState();
+  await loadSourceExports();
   await loadWorkspaces();
   renderWorkspaceSelect();
+  renderPrefabGrid();
   renderVault();
   renderNotebookSelect();
   updateCounts();
+  renderSourcesPanel();
+  await refreshSdkStatus();
   setupListeners();
+  setupSourcesListeners();
   setupMessageListener();
   setupLoginListeners();
 
@@ -294,8 +307,49 @@ function setupLoginListeners() {
   });
 }
 
+async function refreshSdkStatus() {
+  const bar = document.getElementById('sdk-status-bar');
+  const text = document.getElementById('sdk-status-text');
+  if (!bar || !text) return;
+  try {
+    const res = await apiFetch('/api/sdk-status');
+    const data = await res.json();
+    bar.classList.remove('ok', 'warn', 'err');
+    if (data.authenticated) {
+      bar.classList.add('ok');
+      text.textContent = 'NotebookLM SDK connected';
+    } else if (data.simulationMode) {
+      bar.classList.add('warn');
+      text.textContent = 'Simulation mode (USE_SIMULATION=true)';
+    } else {
+      bar.classList.add('err');
+      text.textContent = 'SDK not connected — tap key to sync';
+    }
+  } catch (e) {
+    bar.classList.remove('ok', 'warn');
+    bar.classList.add('err');
+    text.textContent = 'Server offline — start npm start';
+  }
+}
+
 // ─── Setup DOM listeners ───
 function setupListeners() {
+  const btnSdk = document.getElementById('btn-sdk-auth');
+  if (btnSdk) {
+    btnSdk.addEventListener('click', async () => {
+      try {
+        showToast('Syncing NotebookLM auth...', 'info');
+        const res = await apiFetch('/api/auth/sync', { method: 'POST' });
+        const data = await res.json();
+        if (data.sdkAuthed) showToast('SDK connected', 'ok');
+        else showToast('Run: npx notebooklm-sdk login', 'warn');
+        await refreshSdkStatus();
+      } catch (e) {
+        showToast('Auth sync failed', 'err');
+      }
+    });
+  }
+
   // Notebook select
   document.getElementById('notebook-select').addEventListener('change', (e) => {
     session.activeNotebookId = e.target.value;
@@ -356,6 +410,21 @@ function setupListeners() {
       } else {
         showToast(_('noArtifactsFoundOnPage'), 'ok');
       }
+
+      try {
+        const serverRes = await apiFetch('/api/discovery/sync', {
+          method: 'POST',
+          body: JSON.stringify({ scan: true, scrape: false }),
+        });
+        if (serverRes.ok) {
+          const data = await serverRes.json();
+          if (data.report?.scan?.added) {
+            showToast(`Server catalog: +${data.report.scan.added} artifacts`, 'ok');
+          }
+          await mergeServerArtifacts();
+          await refreshSdkStatus();
+        }
+      } catch { /* optional server sync */ }
     } catch (e) {
       showToast(_('couldNotReachPage'), 'err');
     } finally {
@@ -393,6 +462,17 @@ function setupListeners() {
   document.getElementById('inspector-toggle').addEventListener('click', () => {
     document.getElementById('inspector').classList.toggle('collapsed');
   });
+
+  // Panel tabs
+  document.querySelectorAll('.panel-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      activePanel = tab.dataset.panel;
+      document.querySelectorAll('.panel-tab').forEach((t) => t.classList.toggle('active', t.dataset.panel === activePanel));
+      document.getElementById('panel-artifacts').classList.toggle('active', activePanel === 'artifacts');
+      document.getElementById('panel-sources').classList.toggle('active', activePanel === 'sources');
+      document.getElementById('inspector').style.display = activePanel === 'artifacts' ? '' : 'none';
+    });
+  });
 }
 
 // ─── Message listener from background ───
@@ -405,6 +485,27 @@ function setupMessageListener() {
         renderNotebookSelect();
         if (msg.added > 0) showToast(_('newArtifacts', String(msg.added)), 'ok');
       });
+    }
+    if (msg.action === MSG_ACTIONS.SOURCES_EXPORT_SAVED) {
+      loadSourceExports().then(() => {
+        renderSourcesPanel();
+        if (msg.exportId) showToast('Source export saved', 'ok');
+      });
+    }
+    if (msg.action === MSG_ACTIONS.SOURCES_EXTRACT_PROGRESS) {
+      const el = document.getElementById('sources-status');
+      if (el) el.textContent = msg.message || `Extracting ${msg.current}/${msg.total}...`;
+    }
+    if (msg.action === MSG_ACTIONS.SOURCES_EXTRACT_ERROR) {
+      extractionInProgress = false;
+      const el = document.getElementById('sources-status');
+      if (el) el.textContent = '';
+      showToast(msg.error || 'Extraction failed', 'err');
+    }
+    if (msg.action === 'sources:extract:cancelled') {
+      extractionInProgress = false;
+      document.getElementById('sources-status').textContent = '';
+      showToast('Extraction cancelled', 'warn');
     }
   });
 }
@@ -512,18 +613,102 @@ async function handleCardAction(action, id) {
   }
 }
 
+// ─── Merge server catalog into local vault ───
+async function mergeServerArtifacts() {
+  try {
+    const res = await apiFetch('/api/artifacts');
+    if (!res.ok) return;
+    const serverList = await res.json();
+    const { merged, added } = mergeArtifactsIntoCatalog(artifacts, serverList);
+    artifacts = merged;
+    await chrome.storage.local.set({ [STORAGE_KEYS.artifacts]: artifacts });
+    renderVault();
+    updateCounts();
+    if (added > 0) showToast(`Merged ${added} server artifact(s)`, 'ok');
+  } catch { /* offline */ }
+}
+
+// ─── Prefab quick-launch grid ───
+function renderPrefabGrid() {
+  const host = document.getElementById('prefab-inputs');
+  if (!host || document.getElementById('prefab-grid')) return;
+  const grid = document.createElement('div');
+  grid.id = 'prefab-grid';
+  grid.className = 'prefab-grid';
+  grid.innerHTML = PREFABS.map((p) => {
+    const locked = !isPro && !FREE_PREFABS.includes(p.id);
+    return `<button type="button" class="prefab-btn${locked ? ' locked' : ''}" data-id="${p.id}" title="${escapeHtml(p.desc)}">${escapeHtml(p.name)}</button>`;
+  }).join('');
+  host.after(grid);
+  grid.querySelectorAll('.prefab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => launchPrefab(btn.dataset.id));
+  });
+}
+
+async function launchPrefab(prefabId) {
+  if (!isPro && !FREE_PREFABS.includes(prefabId)) {
+    showToast('Pro prefab — enter license key in Settings', 'err');
+    return;
+  }
+  const topic = document.getElementById('input-topic')?.value?.trim();
+  const audience = document.getElementById('input-audience')?.value?.trim();
+  if (!topic || !audience) {
+    showToast('Enter topic and audience first', 'err');
+    return;
+  }
+  const notebookId = document.getElementById('notebook-select')?.value || session.activeNotebookId;
+  if (!notebookId) {
+    const tabs = await chrome.tabs.query({ url: '*://notebooklm.google.com/*' });
+    if (tabs.length) {
+      await chrome.tabs.sendMessage(tabs[0].id, {
+        action: MSG_ACTIONS.PREFAB_INJECT,
+        prefabId,
+        topic,
+        audience,
+      });
+      showToast('Prefab injected into NotebookLM', 'ok');
+      return;
+    }
+    showToast('Select a notebook or open NotebookLM', 'err');
+    return;
+  }
+  try {
+    const res = await apiFetch('/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({ prefabId, notebookId, topic, audience }),
+    });
+    if (res.ok) {
+      showToast('Generation queued on server', 'ok');
+    } else {
+      const data = await res.json().catch(() => ({}));
+      showToast(data.error || 'Generate failed', 'err');
+    }
+  } catch (e) {
+    showToast(e.message || 'Network error', 'err');
+  }
+}
+
 // ─── Show inspector ───
-function showInspector(id) {
+async function showInspector(id) {
   const art = artifacts.find(a => a.id === id);
   if (!art) return;
 
-  const typeInfo = ARTIFACT_TYPES[art.type] || ARTIFACT_TYPES.audio;
-  const isStored = !!art.localPath;
+  let inspectData = art;
+  try {
+    const res = await apiFetch(`/api/inspector/${id}`);
+    if (res.ok) inspectData = await res.json();
+  } catch { /* local fallback */ }
+
+  const typeInfo = ARTIFACT_TYPES[inspectData.type] || ARTIFACT_TYPES.audio;
+  const isStored = !!inspectData.localPath;
+  const cdiBar = typeof inspectData.cdi === 'number'
+    ? `<div class="field"><div class="field-label">CDI Score</div><div class="field-value"><strong>${inspectData.cdi}</strong>/100 · ${inspectData.wordCount || 0} words</div></div>`
+    : '';
 
   document.getElementById('inspector-body').innerHTML = `
     <div class="field">
       <div class="field-label">${_('titleLabel')}</div>
-      <div class="field-value">${escapeHtml(art.title)}</div>
+      <div class="field-value">${escapeHtml(inspectData.title)}</div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
       <div class="field">
@@ -536,14 +721,15 @@ function showInspector(id) {
       </div>
       <div class="field">
         <div class="field-label">${_('notebookLabel')}</div>
-        <div class="field-value">${escapeHtml(art.notebookName || _('unknown'))}</div>
+        <div class="field-value">${escapeHtml(inspectData.notebookName || _('unknown'))}</div>
       </div>
       <div class="field">
         <div class="field-label">${_('discoveredLabel')}</div>
-        <div class="field-value">${formatDate(art.discoveredAt)}</div>
+        <div class="field-value">${formatDate(inspectData.discoveredAt)}</div>
       </div>
     </div>
-    ${art.prompt ? `<div class="field"><div class="field-label">${_('promptLabel')}</div><div class="field-value prompt">${escapeHtml(art.prompt)}</div></div>` : ''}
+    ${cdiBar}
+    ${inspectData.prompt ? `<div class="field"><div class="field-label">${_('promptLabel')}</div><div class="field-value prompt">${escapeHtml(inspectData.prompt)}</div></div>` : ''}
   `;
 
   document.getElementById('inspector-actions').innerHTML = `
@@ -681,6 +867,205 @@ function showToast(msg, type = 'ok') {
 // ─── Save session ───
 async function saveSession() {
   await chrome.storage.local.set({ [STORAGE_KEYS.session]: session });
+}
+
+// ─── Sources export panel ───
+async function loadSourceExports() {
+  const data = await chrome.storage.local.get(STORAGE_KEYS.sourceExports);
+  sourceExports = data[STORAGE_KEYS.sourceExports] || [];
+}
+
+function showSourcesView(view) {
+  sourcesView = view;
+  document.getElementById('sources-list-view').classList.toggle('hidden', view !== 'list');
+  document.getElementById('sources-detail-view').classList.toggle('hidden', view !== 'detail');
+  document.getElementById('sources-viewer').classList.toggle('hidden', view !== 'viewer');
+}
+
+function renderSourcesPanel() {
+  const list = document.getElementById('sources-exports-list');
+  const empty = document.getElementById('sources-empty');
+  if (!list || !empty) return;
+
+  if (sourcesView !== 'list') return;
+
+  if (!sourceExports.length) {
+    list.innerHTML = '';
+    empty.style.display = 'flex';
+    return;
+  }
+
+  empty.style.display = 'none';
+  list.innerHTML = sourceExports.map((exp) => {
+    const summary = summarizeExport(exp);
+    return `
+      <div class="source-export-card" data-export-id="${exp.id}">
+        <div class="title">${escapeHtml(exp.notebookTitle || 'Notebook Export')}</div>
+        <div class="meta">${summary.totalSources} sources · ${formatDate(exp.extractedAt)}${summary.errors ? ` · ${summary.errors} errors` : ''}</div>
+      </div>
+    `;
+  }).join('');
+
+  list.querySelectorAll('.source-export-card').forEach((card) => {
+    card.addEventListener('click', () => openSourceExportDetail(card.dataset.exportId));
+  });
+}
+
+function openSourceExportDetail(exportId) {
+  activeExportId = exportId;
+  const exp = sourceExports.find((e) => e.id === exportId);
+  if (!exp) return;
+
+  showSourcesView('detail');
+  document.getElementById('sources-detail-title').textContent = exp.notebookTitle || 'Notebook Export';
+
+  const hasImages = (exp.sources || []).some((s) => s.isImageSource && s.imageUrl);
+  document.getElementById('sources-media-option').classList.toggle('hidden', !hasImages);
+
+  const items = document.getElementById('sources-items');
+  items.innerHTML = (exp.sources || []).map((src, idx) => {
+    if (src.excluded) return '';
+    const status = src.error ? `<div class="err">${escapeHtml(src.error)}</div>` : '';
+    return `
+      <div class="source-item-row" data-source-idx="${idx}">
+        <div>${escapeHtml(src.name || 'Untitled')}</div>
+        ${status}
+      </div>
+    `;
+  }).join('');
+
+  items.querySelectorAll('.source-item-row').forEach((row) => {
+    row.addEventListener('click', () => openSourceViewer(parseInt(row.dataset.sourceIdx, 10)));
+  });
+}
+
+function openSourceViewer(sourceIndex) {
+  const exp = sourceExports.find((e) => e.id === activeExportId);
+  const source = exp?.sources?.[sourceIndex];
+  if (!source) return;
+
+  activeSourceIndex = sourceIndex;
+  showSourcesView('viewer');
+  document.getElementById('sources-viewer-title').textContent = source.name || 'Untitled';
+  document.getElementById('sources-viewer-content').textContent =
+    buildSourceMarkdown(source).trim() || '(No content extracted)';
+}
+
+function setupSourcesListeners() {
+  document.getElementById('btn-extract-sources')?.addEventListener('click', startSourceExtraction);
+  document.getElementById('btn-clear-exports')?.addEventListener('click', clearSourceExports);
+  document.getElementById('btn-sources-back')?.addEventListener('click', () => {
+    showSourcesView('list');
+    renderSourcesPanel();
+  });
+  document.getElementById('btn-viewer-back')?.addEventListener('click', () => {
+    showSourcesView('detail');
+    openSourceExportDetail(activeExportId);
+  });
+  document.getElementById('btn-download-source-md')?.addEventListener('click', async () => {
+    if (!activeExportId || activeSourceIndex == null) return;
+    await chrome.runtime.sendMessage({
+      action: MSG_ACTIONS.SOURCES_DOWNLOAD_MD,
+      exportId: activeExportId,
+      sourceIndex: activeSourceIndex,
+    });
+    showToast('Download started', 'ok');
+  });
+  document.getElementById('btn-download-all-sources')?.addEventListener('click', async () => {
+    if (!activeExportId) return;
+    const includeMedia = document.getElementById('chk-include-media')?.checked !== false;
+    const btn = document.getElementById('btn-download-all-sources');
+    btn.disabled = true;
+    btn.textContent = 'Building zip...';
+    try {
+      const resp = await chrome.runtime.sendMessage({
+        action: MSG_ACTIONS.SOURCES_DOWNLOAD_ZIP,
+        exportId: activeExportId,
+        includeMedia,
+      });
+      if (resp?.error) showToast(resp.error, 'err');
+      else showToast('Zip download started', 'ok');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Download All';
+    }
+  });
+}
+
+async function startSourceExtraction() {
+  if (extractionInProgress) return;
+
+  const tabs = await chrome.tabs.query({ url: '*://notebooklm.google.com/*' });
+  if (!tabs.length) {
+    showToast('Open a NotebookLM notebook first', 'err');
+    return;
+  }
+
+  const nbTab = tabs.find((t) => /\/notebook\/[a-f0-9-]{36}/i.test(t.url || '')) || tabs[0];
+  const nbInfo = await chrome.tabs.sendMessage(nbTab.id, { action: MSG_ACTIONS.SOURCES_GET_NOTEBOOK }).catch(() => null);
+  if (!nbInfo?.onNotebookPage) {
+    showToast('Navigate to a notebook page first', 'err');
+    return;
+  }
+
+  extractionInProgress = true;
+  activePanel = 'sources';
+  document.querySelectorAll('.panel-tab').forEach((t) => t.classList.toggle('active', t.dataset.panel === 'sources'));
+  document.getElementById('panel-artifacts').classList.remove('active');
+  document.getElementById('panel-sources').classList.add('active');
+  document.getElementById('inspector').style.display = 'none';
+
+  const statusEl = document.getElementById('sources-status');
+  statusEl.textContent = 'Starting extraction...';
+
+  try {
+    const resp = await chrome.tabs.sendMessage(nbTab.id, { action: MSG_ACTIONS.SOURCES_EXTRACT_START });
+    extractionInProgress = false;
+    statusEl.textContent = '';
+
+    if (resp?.cancelled) return;
+    if (resp?.error) {
+      showToast(resp.error, 'err');
+      return;
+    }
+    if (!resp?.data) return;
+
+    const saveResp = await chrome.runtime.sendMessage({
+      action: MSG_ACTIONS.SOURCES_EXTRACT_COMPLETE,
+      data: resp.data,
+      replace: false,
+    });
+
+    if (saveResp?.duplicate) {
+      const replace = confirm('This notebook was already exported. Replace with the new export?');
+      if (replace) {
+        await chrome.runtime.sendMessage({
+          action: MSG_ACTIONS.SOURCES_EXTRACT_COMPLETE,
+          data: resp.data,
+          replace: true,
+        });
+      }
+    }
+
+    await loadSourceExports();
+    renderSourcesPanel();
+    const count = resp.data.extractionInfo?.totalSources || 0;
+    showToast(`Extracted ${count} sources`, 'ok');
+  } catch (e) {
+    extractionInProgress = false;
+    statusEl.textContent = '';
+    showToast('Could not reach NotebookLM tab', 'err');
+  }
+}
+
+async function clearSourceExports() {
+  if (!sourceExports.length) return;
+  if (!confirm('Clear all source exports from local storage?')) return;
+  await chrome.runtime.sendMessage({ action: MSG_ACTIONS.SOURCES_CLEAR_EXPORTS });
+  sourceExports = [];
+  showSourcesView('list');
+  renderSourcesPanel();
+  showToast('Exports cleared', 'ok');
 }
 
 // ─── Run ───

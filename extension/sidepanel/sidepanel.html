@@ -16,9 +16,15 @@
       <span data-i18n="titleApp">NOTEtoolsLM</span>
     </div>
     <div class="header-actions">
+      <button class="btn ghost sm" id="btn-sdk-auth" title="Connect NotebookLM SDK">&#x1F511;</button>
       <button class="btn ghost sm" id="btn-scan" title="Scan for artifacts" data-i18n-title="scanForArtifacts">&#x21bb;</button>
       <button class="btn ghost sm" id="btn-settings" title="Settings" data-i18n-title="settings">&#x2699;</button>
     </div>
+  </div>
+
+  <div class="sdk-status-bar" id="sdk-status-bar">
+    <span class="sdk-dot" id="sdk-dot"></span>
+    <span id="sdk-status-text">Checking SDK...</span>
   </div>
 
   <!-- Workspace Selector -->
@@ -27,6 +33,14 @@
       <option value="" data-i18n="personalWorkspace">Personal</option>
     </select>
   </div>
+
+  <!-- Panel Tabs -->
+  <div class="panel-tabs">
+    <button class="panel-tab active" data-panel="artifacts">Artifacts</button>
+    <button class="panel-tab" data-panel="sources">Sources</button>
+  </div>
+
+  <div id="panel-artifacts" class="panel-view active">
 
   <!-- Controls -->
   <div class="controls">
@@ -58,6 +72,47 @@
       <div class="icon">&#128229;</div>
       <div class="title" data-i18n="noArtifactsYet">No artifacts yet</div>
       <div class="desc" data-i18n="noArtifactsDesc">Open notebooklm.google.com and click Sync, or browse your local vault folder.</div>
+    </div>
+  </div>
+
+  </div><!-- /panel-artifacts -->
+
+  <div id="panel-sources" class="panel-view">
+    <div class="sources-header">
+      <button class="btn primary sm" id="btn-extract-sources">Extract All Sources</button>
+      <button class="btn ghost sm" id="btn-clear-exports" title="Clear all exports">Clear</button>
+    </div>
+    <p class="sources-status" id="sources-status"></p>
+
+    <div id="sources-list-view">
+      <div class="empty-state" id="sources-empty">
+        <div class="icon">&#128218;</div>
+        <div class="title">No source exports yet</div>
+        <div class="desc">Open a NotebookLM notebook, then click Extract All Sources.</div>
+      </div>
+      <div class="sources-exports-list" id="sources-exports-list"></div>
+    </div>
+
+    <div id="sources-detail-view" class="hidden">
+      <div class="sources-detail-bar">
+        <button class="btn ghost sm" id="btn-sources-back">&larr; Back</button>
+        <button class="btn primary sm" id="btn-download-all-sources">Download All</button>
+      </div>
+      <h3 class="sources-detail-title" id="sources-detail-title"></h3>
+      <label class="sources-option hidden" id="sources-media-option">
+        <input type="checkbox" id="chk-include-media" checked />
+        Include media files in zip
+      </label>
+      <div class="sources-items" id="sources-items"></div>
+    </div>
+
+    <div id="sources-viewer" class="hidden">
+      <div class="sources-detail-bar">
+        <button class="btn ghost sm" id="btn-viewer-back">&larr; Back</button>
+        <button class="btn primary sm" id="btn-download-source-md">Download .md</button>
+      </div>
+      <h3 class="sources-detail-title" id="sources-viewer-title"></h3>
+      <div class="sources-viewer-content" id="sources-viewer-content"></div>
     </div>
   </div>
 

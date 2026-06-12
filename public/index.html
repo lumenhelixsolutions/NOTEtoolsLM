@@ -21,6 +21,21 @@
   --font:'Inter',system-ui,-apple-system,sans-serif;
   --sidebarW:280px;--rightbarW:320px;
 }
+[data-theme="light"]{
+  --bg:#f8fafc;--bg2:#ffffff;--bg3:#f1f5f9;--bg4:#e2e8f0;
+  --fg:#0f172a;--fg2:#475569;--fg3:#64748b;
+  --glass:rgba(255,255,255,0.85);--glass2:rgba(0,0,0,0.03);--glass3:rgba(0,0,0,0.06);
+  --border:rgba(0,0,0,0.08);--shadow:0 4px 24px rgba(0,0,0,0.08);--shadow2:0 2px 12px rgba(0,0,0,0.06);
+}
+#auth-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.65);display:none;align-items:center;justify-content:center;z-index:3000}
+#auth-overlay.visible{display:flex}
+.auth-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:24px;width:min(360px,92vw);box-shadow:var(--shadow)}
+.auth-card h2{font-size:18px;margin-bottom:12px}
+.auth-card input{width:100%;padding:10px 12px;margin-bottom:10px;border-radius:var(--radius2);border:1px solid var(--border);background:var(--bg3);color:var(--fg)}
+.auth-tabs{display:flex;gap:8px;margin-bottom:14px}
+.auth-tab{flex:1;padding:8px;border-radius:var(--radius2);border:1px solid var(--border);background:var(--glass2);color:var(--fg2);cursor:pointer}
+.auth-tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.auth-error{color:var(--err);font-size:12px;min-height:18px;margin-bottom:8px}
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--fg);overflow:hidden}
 body{display:flex;flex-direction:column}
@@ -297,6 +312,8 @@ body{display:flex;flex-direction:column}
 }
 
 /* ═══ ANIMATIONS ═══ */
+.recent-item{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px}
+.recent-item .time{color:var(--fg3);min-width:110px;flex-shrink:0}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 .fade-in{animation:fadeIn .2s ease-out}
 </style>
@@ -334,6 +351,12 @@ body{display:flex;flex-direction:column}
     <button class="btn sm" onclick="showSettingsModal()" title="Settings">
       <i class="fas fa-cog"></i>
     </button>
+    <button class="btn sm" id="btn-auth" onclick="showAuthOverlay()" title="Account">
+      <i class="fas fa-user"></i>
+    </button>
+    <button class="btn sm" id="btn-logout" style="display:none" onclick="logoutDashboard()" title="Sign out">
+      <i class="fas fa-sign-out-alt"></i>
+    </button>
   </div>
 </header>
 
@@ -349,6 +372,7 @@ body{display:flex;flex-direction:column}
         <div id="health-card">
           <div class="health-item"><span class="health-label">Status</span><span class="health-value" id="h-status"><span class="badge err">Offline</span></span></div>
           <div class="health-item"><span class="health-label">SDK</span><span class="health-value" id="h-sdk">-</span></div>
+          <div class="health-item"><span class="health-label">SDK Mode</span><span class="health-value" id="h-sdk-mode"><span class="badge neutral">Checking</span></span></div>
           <div class="health-item"><span class="health-label">Notebooks</span><span class="health-value" id="h-nb">0</span></div>
           <div class="health-item"><span class="health-label">Active Jobs</span><span class="health-value" id="h-jobs">0</span></div>
           <div class="health-item"><span class="health-label">Queue</span><span class="health-value" id="h-queue">0</span></div>
@@ -659,7 +683,7 @@ body{display:flex;flex-direction:column}
 // ═══════════════════════════════════════════════════════════════
 //  CONFIG — change if API runs on a different host/port
 // ═══════════════════════════════════════════════════════════════
-const API_BASE = ''; // e.g. 'http://localhost:8080' if page is served separately
+let API_BASE = localStorage.getItem('ntlm-api-base') || '';
 
 // ═══════════════════════════════════════════════════════════════
 //  STATE
@@ -682,7 +706,9 @@ const State = {
   bulkSelect: false,
   bulkIds: new Set(),
   prefabs: [],
-  logEntries: []
+  logEntries: [],
+  authToken: localStorage.getItem('ntlm-token') || null,
+  authUser: localStorage.getItem('ntlm-user') || null
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -704,8 +730,14 @@ const PREFABS = [
 // ═══════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
   loadPrefabs();
-  initWebSocket();
-  refreshAll();
+  setupDashboardAuth();
+  if (!State.authToken) {
+    showAuthOverlay();
+  } else {
+    updateAuthButtons();
+    initWebSocket();
+    refreshAll();
+  }
   updateTime();
   setInterval(updateTime, 60000);
 
@@ -810,14 +842,123 @@ function handleWsMessage(msg) {
 //  API HELPERS
 // ═══════════════════════════════════════════════════════════════
 async function api(method, path, body) {
+  const url = (API_BASE || '') + path;
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (State.authToken) opts.headers.Authorization = `Bearer ${State.authToken}`;
   if(body) opts.body = JSON.stringify(body);
-  const res = await fetch(path, opts);
+  const res = await fetch(url, opts);
+  if (res.status === 401) {
+    logoutDashboard();
+    showAuthOverlay();
+    throw new Error('Session expired — please sign in');
+  }
   if(!res.ok) {
     const txt = await res.text();
     throw new Error(`${res.status}: ${txt}`);
   }
   return res.json();
+}
+
+function setupDashboardAuth() {
+  const overlay = document.getElementById('auth-overlay');
+  if (!overlay) return;
+  document.getElementById('auth-tab-login')?.addEventListener('click', () => switchAuthTab('login'));
+  document.getElementById('auth-tab-register')?.addEventListener('click', () => switchAuthTab('register'));
+  document.getElementById('btn-auth-login')?.addEventListener('click', () => dashboardLogin());
+  document.getElementById('btn-auth-register')?.addEventListener('click', () => dashboardRegister());
+}
+
+function switchAuthTab(tab) {
+  document.getElementById('auth-tab-login')?.classList.toggle('active', tab === 'login');
+  document.getElementById('auth-tab-register')?.classList.toggle('active', tab === 'register');
+  document.getElementById('auth-form-login').style.display = tab === 'login' ? 'block' : 'none';
+  document.getElementById('auth-form-register').style.display = tab === 'register' ? 'block' : 'none';
+  document.getElementById('auth-error').textContent = '';
+}
+
+function showAuthOverlay() {
+  const el = document.getElementById('auth-overlay');
+  if (el) { el.classList.add('visible'); switchAuthTab('login'); }
+}
+
+function hideAuthOverlay() {
+  document.getElementById('auth-overlay')?.classList.remove('visible');
+}
+
+function updateAuthButtons() {
+  const logoutBtn = document.getElementById('btn-logout');
+  const authBtn = document.getElementById('btn-auth');
+  if (State.authToken) {
+    if (logoutBtn) logoutBtn.style.display = '';
+    if (authBtn) authBtn.title = State.authUser ? `Signed in as ${State.authUser}` : 'Account';
+  } else {
+    if (logoutBtn) logoutBtn.style.display = 'none';
+  }
+}
+
+function setDashboardToken(token, username) {
+  State.authToken = token;
+  State.authUser = username || null;
+  localStorage.setItem('ntlm-token', token);
+  if (username) localStorage.setItem('ntlm-user', username);
+  updateAuthButtons();
+}
+
+function logoutDashboard() {
+  State.authToken = null;
+  State.authUser = null;
+  localStorage.removeItem('ntlm-token');
+  localStorage.removeItem('ntlm-user');
+  if (State.ws) { State.ws.close(); State.ws = null; }
+  updateAuthButtons();
+}
+
+async function dashboardLogin() {
+  const username = document.getElementById('auth-username')?.value?.trim();
+  const password = document.getElementById('auth-password')?.value;
+  const errEl = document.getElementById('auth-error');
+  if (!username || !password) { errEl.textContent = 'Enter username and password'; return; }
+  try {
+    const res = await fetch((API_BASE || '') + '/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) { errEl.textContent = data.error || 'Login failed'; return; }
+    setDashboardToken(data.token, username);
+    hideAuthOverlay();
+    initWebSocket();
+    await refreshAll();
+    showToast('Signed in', 'ok');
+  } catch (e) {
+    errEl.textContent = 'Network error — is the server running?';
+  }
+}
+
+async function dashboardRegister() {
+  const username = document.getElementById('auth-reg-username')?.value?.trim();
+  const password = document.getElementById('auth-reg-password')?.value;
+  const password2 = document.getElementById('auth-reg-password2')?.value;
+  const errEl = document.getElementById('auth-error');
+  if (!username || !password) { errEl.textContent = 'Enter username and password'; return; }
+  if (password !== password2) { errEl.textContent = 'Passwords do not match'; return; }
+  try {
+    const res = await fetch((API_BASE || '') + '/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) { errEl.textContent = data.error || 'Registration failed'; return; }
+    setDashboardToken(data.token, username);
+    hideAuthOverlay();
+    initWebSocket();
+    await refreshAll();
+    showToast('Account created', 'ok');
+  } catch (e) {
+    errEl.textContent = 'Network error — is the server running?';
+  }
 }
 
 async function refreshAll() {
@@ -851,8 +992,33 @@ async function refreshStatus() {
     if(d.healthLog) {
       d.healthLog.forEach(entry => logActivity(entry.msg, 'info', entry.time));
     }
+    await refreshSdkStatus();
   } catch(e) {
     // Polling will retry
+  }
+}
+
+async function refreshSdkStatus() {
+  try {
+    const d = await api('GET', '/api/sdk-status');
+    const modeEl = document.getElementById('h-sdk-mode');
+    const connText = document.getElementById('conn-text');
+    if (modeEl) {
+      if (d.simulationMode) {
+        modeEl.innerHTML = '<span class="badge warn">Simulation</span>';
+      } else if (d.authenticated) {
+        modeEl.innerHTML = '<span class="badge ok">Live SDK</span>';
+      } else {
+        modeEl.innerHTML = '<span class="badge err">Not connected</span>';
+      }
+    }
+    if (connText && !State.wsActive) {
+      connText.textContent = d.authenticated ? 'SDK Ready' : 'SDK Auth needed';
+    }
+    State.sdkStatus = d;
+  } catch (e) {
+    const modeEl = document.getElementById('h-sdk-mode');
+    if (modeEl) modeEl.innerHTML = '<span class="badge err">Unknown</span>';
   }
 }
 
@@ -864,13 +1030,14 @@ function updateHealth(entry) {
 //  AUTH
 // ═══════════════════════════════════════════════════════════════
 async function syncAuth() {
-  showToast('Authenticating...', 'info');
+  showToast('Authenticating with NotebookLM...', 'info');
   try {
     const d = await api('POST', '/api/auth/sync');
     if(d.sdkAuthed) {
-      showToast('Authentication successful!', 'ok');
+      showToast('NotebookLM SDK connected!', 'ok');
     } else {
-      showToast('Auth finished but SDK not ready. Try manual login.', 'warn');
+      const steps = (State.sdkStatus?.setupSteps || []).join(' · ');
+      showToast('SDK not ready. Run: npx notebooklm-sdk login' + (steps ? ` — ${steps}` : ''), 'warn');
     }
     await refreshStatus();
   } catch(e) {
@@ -881,16 +1048,22 @@ async function syncAuth() {
 // ═══════════════════════════════════════════════════════════════
 //  FLEET / NOTEBOOKS
 // ═══════════════════════════════════════════════════════════════
-async function syncFleet() {
-  showToast('Syncing fleet...', 'info');
+async function syncFleet(includeScan = true) {
+  showToast('Syncing fleet & artifacts...', 'info');
   try {
-    const d = await api('GET', '/api/fleet');
-    State.notebooks = d || [];
+    const d = await api('POST', '/api/discovery/sync', { scan: includeScan, scrape: false });
+    State.notebooks = d.notebooks || [];
     renderNotebooks();
-    showToast(`Fleet synced: ${State.notebooks.length} notebooks`, 'ok');
+    const fleet = d.report?.fleet;
+    const scan = d.report?.scan;
+    let msg = `Fleet: ${State.notebooks.length} notebooks`;
+    if (scan?.ok) msg += ` · ${scan.added} new artifacts (${scan.merged} merged)`;
+    else if (fleet && !fleet.ok) msg += ' · SDK scan skipped (auth required)';
+    showToast(msg, 'ok');
     await refreshStatus();
+    await refreshVault();
   } catch(e) {
-    showToast('Fleet sync failed: ' + e.message, 'err');
+    showToast('Discovery sync failed: ' + e.message, 'err');
   }
 }
 
@@ -1088,6 +1261,10 @@ function renderPipeline() {
 
 function renderJobCard(job) {
   const progressColor = job.status === 'completed' ? 'var(--ok)' : job.status === 'failed' ? 'var(--err)' : 'var(--accent)';
+  const simulated = Boolean(job.result?.simulated);
+  const sourceBadge = job.status === 'completed'
+    ? (simulated ? '<span class="badge warn">Simulated</span>' : '<span class="badge ok">SDK</span>')
+    : (job.sdkError ? '<span class="badge warn" title="'+escapeHtml(job.sdkError)+'">SDK warn</span>' : '');
   return `
     <div class="job-card status-${job.status} ${State.bulkSelect ? 'selectable' : ''}" data-id="${job.id}" onclick="onJobClick(event,'${job.id}')" oncontextmenu="onJobCtx(event,'${job.id}')">
       ${State.bulkSelect ? `<div class="checkbox-wrap" onclick="event.stopPropagation()"><input type="checkbox" ${State.bulkIds.has(job.id)?'checked':''} onchange="toggleBulkJob('${job.id}')"></div>` : ''}
@@ -1095,6 +1272,7 @@ function renderJobCard(job) {
       <div class="job-meta">
         <span><i class="fas fa-book"></i> ${escapeHtml(job.topic?.substring(0,20)||'')}</span>
         <span class="badge ${job.status==='completed'?'ok':job.status==='failed'?'err':'info'}">${job.status}</span>
+        ${sourceBadge}
       </div>
       <div class="job-progress">
         <div class="job-progress-fill" style="width:${job.progress||0}%;background:${progressColor}"></div>
@@ -1361,7 +1539,8 @@ async function scanVaultApi() {
   showToast('Scanning API for artifacts...', 'info');
   try {
     const d = await api('POST', '/api/artifacts/scan');
-    showToast(`Scan complete: ${d.discovered || 0} artifacts discovered`, 'ok');
+    const extra = d.merged ? `, ${d.merged} merged` : '';
+    showToast(`Scan complete: ${d.newArtifacts || 0} new${extra}`, 'ok');
     await refreshVault();
   } catch(e) {
     showToast('Scan failed: ' + e.message, 'err');
@@ -1372,7 +1551,7 @@ async function scrapeVaultUI() {
   showToast('Scraping NotebookLM web UI... (this may take a moment)', 'info');
   try {
     const d = await api('POST', '/api/scrape');
-    showToast(`Scrape complete: ${d.scraped || 0} artifacts found`, 'ok');
+    showToast(`Scrape complete: ${d.newScraped || 0} new, ${d.merged || 0} merged`, 'ok');
     await refreshVault();
   } catch(e) {
     showToast('Scrape failed: ' + e.message, 'err');
@@ -1406,8 +1585,15 @@ function toggleBulkArtifact(id) {
 async function bulkDownloadVault() {
   if(State.bulkIds.size === 0) { showToast('No artifacts selected', 'warn'); return; }
   try {
-    await api('POST', '/api/bulk-download', { ids: Array.from(State.bulkIds) });
-    showToast(`Downloading ${State.bulkIds.size} artifacts...`, 'ok');
+    const d = await api('POST', '/api/bulk-download', { ids: Array.from(State.bulkIds) });
+    let opened = 0;
+    for (const f of d.files || []) {
+      if (f.hasFile) {
+        window.open((API_BASE || '') + f.downloadUrl, '_blank');
+        opened += 1;
+      }
+    }
+    showToast(opened ? `Opened ${opened} downloads` : 'No local files yet — run Store first', opened ? 'ok' : 'warn');
   } catch(e) {
     showToast('Bulk download failed: ' + e.message, 'err');
   }
@@ -1416,10 +1602,15 @@ async function bulkDownloadVault() {
 async function bulkStoreVault() {
   if(State.bulkIds.size === 0) { showToast('No artifacts selected', 'warn'); return; }
   showToast(`Storing ${State.bulkIds.size} artifacts...`, 'info');
-  const promises = Array.from(State.bulkIds).map(id => api('POST', `/api/artifacts/${id}/store`).catch(()=>{}));
-  await Promise.all(promises);
-  showToast('Store complete', 'ok');
-  refreshStorage();
+  try {
+    const d = await api('POST', '/api/artifacts/bulk-store', { ids: Array.from(State.bulkIds) });
+    const ok = (d.results || []).filter(r => r.ok).length;
+    showToast(`Stored ${ok}/${State.bulkIds.size} artifacts`, ok ? 'ok' : 'warn');
+    refreshVault();
+    refreshStorage();
+  } catch(e) {
+    showToast('Bulk store failed: ' + e.message, 'err');
+  }
 }
 
 async function bulkDeleteVault() {
@@ -1631,8 +1822,22 @@ async function uploadFiles(files) {
   refreshStorage();
 }
 
-function previewStorageFile(id) { showToast('Preview not yet implemented', 'info'); }
-function downloadStorageFile(id) { showToast('Download starting...', 'info'); }
+function previewStorageFile(id) {
+  const file = State.storageFiles.find((f) => (f.id || f.name) === id);
+  if (!file) { showToast('File not found', 'err'); return; }
+  const url = `${API_BASE || ''}/api/vault/files/serve?type=${encodeURIComponent(file.type)}&name=${encodeURIComponent(file.name)}`;
+  window.open(url, '_blank');
+}
+
+function downloadStorageFile(id) {
+  const file = State.storageFiles.find((f) => (f.id || f.name) === id);
+  if (!file) { showToast('File not found', 'err'); return; }
+  const a = document.createElement('a');
+  a.href = `${API_BASE || ''}/api/vault/files/serve?type=${encodeURIComponent(file.type)}&name=${encodeURIComponent(file.name)}`;
+  a.download = file.name;
+  a.click();
+  showToast('Download started', 'ok');
+}
 
 async function deleteStorageFile(id) {
   if(!confirm('Delete this file?')) return;
@@ -1654,6 +1859,20 @@ function updateDashboard() {
   const artifacts = State.vaultArtifacts;
   const completed = State.jobs.filter(j => j.status === 'completed').length;
   const running = State.jobs.filter(j => j.status === 'running' || j.status === 'processing').length;
+  const recentEl = document.getElementById('recent-activity');
+  if (recentEl) {
+    const events = [];
+    for (const j of State.jobs.slice(0, 5)) {
+      events.push({ time: j.completedAt || j.createdAt, msg: `Job ${j.status}: ${j.prefabName || j.topic || j.id}` });
+    }
+    for (const a of artifacts.slice(0, 5)) {
+      events.push({ time: a.discoveredAt || a.createdAt, msg: `Artifact: ${a.title}` });
+    }
+    events.sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0));
+    recentEl.innerHTML = events.length
+      ? events.slice(0, 8).map((e) => `<div class="recent-item"><span class="time">${formatDate(e.time)}</span><span>${escapeHtml(e.msg)}</span></div>`).join('')
+      : '<div class="empty-state" style="padding:20px"><div class="empty-state-desc">Activity will appear here when you start generating.</div></div>';
+  }
 
   grid.innerHTML = `
     <div class="stat-card">
@@ -1829,6 +2048,7 @@ function showExportModal() {
       <div class="modal" style="max-width:360px">
         <div class="modal-header"><h3><i class="fas fa-file-export"></i> Export Artifacts</h3><button class="btn icon" onclick="document.getElementById('modal-export').classList.remove('visible')"><i class="fas fa-times"></i></button></div>
         <div class="modal-body" style="padding:16px;display:flex;flex-direction:column;gap:10px">
+          <button class="btn" onclick="exportArtifacts('zip')"><i class="fas fa-file-archive"></i> ZIP (files + manifest)</button>
           <button class="btn" onclick="exportArtifacts('csv')"><i class="fas fa-file-csv"></i> CSV</button>
           <button class="btn" onclick="exportArtifacts('json')"><i class="fas fa-file-code"></i> JSON</button>
           <button class="btn" onclick="exportArtifacts('md')"><i class="fas fa-file-alt"></i> Markdown</button>
@@ -1838,28 +2058,47 @@ function showExportModal() {
   }
   el.classList.add('visible');
 }
-function exportArtifacts(format) {
-  const artifacts = State.vaultArtifacts || [];
-  if(artifacts.length === 0) { showToast('No artifacts to export', 'err'); return; }
-  let blob, filename;
-  if(format === 'json') {
-    blob = new Blob([JSON.stringify(artifacts, null, 2)], {type:'application/json'});
-    filename = 'artifacts.json';
-  } else if(format === 'csv') {
-    const headers = ['id','title','type','notebookName','status','createdAt'];
-    const rows = artifacts.map(a => [a.id, a.title, a.type, a.notebookName, a.status, a.createdAt].map(v => `"${(v||'').replace(/"/g,'""')}"`).join(','));
-    blob = new Blob([[headers.join(','), ...rows].join('\n')], {type:'text/csv'});
-    filename = 'artifacts.csv';
-  } else {
-    const lines = artifacts.map(a => `## ${a.title}\n- **Type:** ${a.type}\n- **Notebook:** ${a.notebookName}\n- **Status:** ${a.status}\n- **Created:** ${a.createdAt}\n\n${a.prompt || ''}\n---\n`);
-    blob = new Blob([lines.join('\n')], {type:'text/markdown'});
-    filename = 'artifacts.md';
+async function exportArtifacts(format) {
+  const ids = State.bulkIds.size ? Array.from(State.bulkIds) : null;
+  const countLabel = ids ? ids.length : (State.vaultArtifacts || []).length;
+  if(countLabel === 0) { showToast('No artifacts to export', 'err'); return; }
+  try {
+    if (format === 'zip') {
+      const headers = { 'Content-Type': 'application/json' };
+      if (State.authToken) headers.Authorization = `Bearer ${State.authToken}`;
+      const res = await fetch((API_BASE || '') + '/api/vault/export', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ ids, format: 'zip' }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'notetoolslm-vault-export.zip';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast(`Exported ZIP (${countLabel} artifacts)`, 'ok');
+    } else {
+      const d = await api('POST', '/api/vault/export', { ids, format });
+      let blob, filename;
+      if (format === 'json') {
+        blob = new Blob([JSON.stringify(d.manifest, null, 2)], { type: 'application/json' });
+        filename = 'artifacts.json';
+      } else {
+        blob = new Blob([d.content], { type: format === 'csv' ? 'text/csv' : 'text/markdown' });
+        filename = format === 'csv' ? 'artifacts.csv' : 'artifacts.md';
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+      showToast(`Exported ${countLabel} artifacts as ${format.toUpperCase()}`, 'ok');
+    }
+  } catch (e) {
+    showToast('Export failed: ' + e.message, 'err');
   }
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename; a.click();
-  URL.revokeObjectURL(url);
-  showToast(`Exported ${artifacts.length} artifacts as ${format.toUpperCase()}`, 'ok');
   document.getElementById('modal-export').classList.remove('visible');
 }
 
@@ -1886,5 +2125,27 @@ function showShortcutsModal() {
   el.classList.add('visible');
 }
 </script>
+
+<div id="auth-overlay">
+  <div class="auth-card">
+    <h2><i class="fas fa-lock"></i> Sign in to NOTEtoolsLM</h2>
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="auth-tab-login" type="button">Login</button>
+      <button class="auth-tab" id="auth-tab-register" type="button">Register</button>
+    </div>
+    <div id="auth-error" class="auth-error"></div>
+    <div id="auth-form-login">
+      <input id="auth-username" placeholder="Username" autocomplete="username">
+      <input id="auth-password" type="password" placeholder="Password" autocomplete="current-password">
+      <button class="btn primary" id="btn-auth-login" type="button" style="width:100%">Sign In</button>
+    </div>
+    <div id="auth-form-register" style="display:none">
+      <input id="auth-reg-username" placeholder="Username" autocomplete="username">
+      <input id="auth-reg-password" type="password" placeholder="Password (8+ chars, upper, lower, number)" autocomplete="new-password">
+      <input id="auth-reg-password2" type="password" placeholder="Confirm password" autocomplete="new-password">
+      <button class="btn primary" id="btn-auth-register" type="button" style="width:100%">Create Account</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

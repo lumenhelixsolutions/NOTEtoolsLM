@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="NOTEtoolsLM">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="55%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f8fafc"/>
+      <stop offset="100%" stop-color="#e2e8f0"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="#0a0e17"/>
+  <rect x="8" y="8" width="112" height="112" rx="22" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+  <g filter="url(#shadow)" transform="translate(20 18)">
+    <!-- Folded note forming stylized N -->
+    <path d="M12 4 L52 4 L52 76 L12 76 Z" fill="url(#paper)" rx="4"/>
+    <path d="M12 4 L52 4 L36 20 L12 20 Z" fill="#cbd5e1"/>
+    <path d="M20 28 L44 52" stroke="url(#g)" stroke-width="7" stroke-linecap="round"/>
+    <path d="M44 28 L20 52" stroke="url(#g)" stroke-width="7" stroke-linecap="round"/>
+    <!-- Helix accent -->
+    <path d="M58 18 C72 18 72 34 58 34 C44 34 44 50 58 50 C72 50 72 66 58 66"
+          fill="none" stroke="url(#g)" stroke-width="4.5" stroke-linecap="round"/>
+    <circle cx="58" cy="66" r="4" fill="#60a5fa"/>
+  </g>
+</svg>

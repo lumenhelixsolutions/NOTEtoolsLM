@@ -34,6 +34,62 @@ function init() {
       sendResponse({ scanned: true, count: arts.length });
       return true;
     }
+    if (msg.action === 'sources:extract:start') {
+      const scraper = window.plmSourcesScraper;
+      if (!scraper) {
+        sendResponse({ success: false, error: 'Source scraper not loaded' });
+        return true;
+      }
+      scraper.startExtraction((progress) => {
+        chrome.runtime.sendMessage({
+          action: 'sources:extract:progress',
+          ...progress,
+        }).catch(() => {});
+      }).then((result) => {
+        if (result.cancelled) {
+          chrome.runtime.sendMessage({ action: 'sources:extract:cancelled' }).catch(() => {});
+          sendResponse({ success: false, cancelled: true });
+        } else {
+          sendResponse({ success: true, data: result.data });
+        }
+      }).catch((err) => {
+        chrome.runtime.sendMessage({
+          action: 'sources:extract:error',
+          error: err.message,
+        }).catch(() => {});
+        sendResponse({ success: false, error: err.message });
+      });
+      return true;
+    }
+    if (msg.action === 'sources:extract:cancel') {
+      window.plmSourcesScraper?.cancelExtraction();
+      sendResponse({ success: true });
+      return true;
+    }
+    if (msg.action === 'sources:fetch:image') {
+      (async () => {
+        try {
+          const resp = await fetch(msg.url, { credentials: 'include', redirect: 'follow' });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const ct = resp.headers.get('content-type') || '';
+          if (!ct.startsWith('image/')) throw new Error(`Unexpected content-type: ${ct}`);
+          const buf = await resp.arrayBuffer();
+          sendResponse({ success: true, data: Array.from(new Uint8Array(buf)) });
+        } catch (err) {
+          sendResponse({ success: false, error: err.message });
+        }
+      })();
+      return true;
+    }
+    if (msg.action === 'sources:get:notebook') {
+      const scraper = window.plmSourcesScraper;
+      sendResponse({
+        notebookId: scraper?.extractNotebookId?.() || location.pathname.match(/\/notebook\/([^/]+)/)?.[1] || '',
+        notebookName: scraper?.extractNotebookName?.() || document.title.replace(' - NotebookLM', '').trim(),
+        onNotebookPage: /\/notebook\/[a-f0-9-]{36}/i.test(location.pathname),
+      });
+      return true;
+    }
   });
 }
 
@@ -265,8 +321,8 @@ function injectToolbar() {
   // Render prefab buttons
   const PREFABS = [
     { id: 'deep-dive', name: _c('prefabDeepDive'), icon: '\uD83C\uDF99' },
-    { id: 'exec-brief', name: _c('prefabBrief'), icon: '\uD83D\uDCCA' },
-    { id: 'explainer', name: _c('prefabVideo'), icon: '\uD83C\uDFAC' },
+    { id: 'executive-briefing', name: _c('prefabBrief'), icon: '\uD83D\uDCCA' },
+    { id: 'explainer-video', name: _c('prefabVideo'), icon: '\uD83C\uDFAC' },
     { id: 'investor-deck', name: _c('prefabSlides'), icon: '\uD83D\uDCC1' },
     { id: 'mind-map', name: _c('prefabMap'), icon: '\uD83E\uDDE0' },
     { id: 'tutorial', name: _c('prefabTutorial'), icon: '\uD83C\uDF93' }
@@ -334,11 +390,13 @@ function makeDraggable(el) {
 function injectPrefab(prefabId, topic, audience) {
   const PREFAB_TEMPLATES = {
     'deep-dive': 'Create a deep-dive podcast episode about {topic} for {audience}. Use a conversational format with two hosts exploring the subject in depth, citing sources naturally. Target 15-20 minutes. Include an intro hook, segment transitions, and a closing summary with key takeaways.',
-    'exec-brief': 'Generate an executive briefing about {topic} tailored for {audience}. Structure: Executive Summary (3 bullets), Key Findings, Strategic Implications, Recommended Actions, and Risk Assessment. Keep it concise and professional.',
-    'explainer': 'Write an explainer video script about {topic} for {audience}. Include scene descriptions, on-screen text suggestions, narrator voiceover, and timing cues. Structure: Hook (0-5s), Problem (5-20s), Solution (20-50s), How It Works (50-80s), CTA (80-90s).',
+    'executive-briefing': 'Generate an executive briefing about {topic} tailored for {audience}. Structure: Executive Summary (3 bullets), Key Findings, Strategic Implications, Recommended Actions, and Risk Assessment. Keep it concise and professional.',
+    'explainer-video': 'Write an explainer video script about {topic} for {audience}. Include scene descriptions, on-screen text suggestions, narrator voiceover, and timing cues. Structure: Hook (0-5s), Problem (5-20s), Solution (20-50s), How It Works (50-80s), CTA (80-90s).',
     'investor-deck': 'Create an investor slide deck outline about {topic} targeting {audience}. Include: Title Slide, Problem Statement, Market Opportunity, Solution Overview, Business Model, Traction, Team, Financials, and Ask. Provide speaker notes for each slide.',
     'mind-map': 'Generate a hierarchical mind map about {topic} designed for {audience}. Start with a central concept, branch into 5-7 main categories, each with 3-5 sub-branches. Include connection descriptions and brief explanatory notes for each node.',
-    'tutorial': 'Create a step-by-step tutorial about {topic} aimed at {audience}. Break into 5-8 clear steps. Use encouraging, instructional tone. Include prerequisites, time estimates per step, common pitfalls, and a recap.'
+    'tutorial': 'Create a step-by-step tutorial about {topic} aimed at {audience}. Break into 5-8 clear steps. Use encouraging, instructional tone. Include prerequisites, time estimates per step, common pitfalls, and a recap.',
+    'critique-debate': 'Produce a critique and debate episode about {topic} for {audience}. Present two balanced perspectives with a moderator. Include source citations.',
+    'competitive-analysis': 'Write a competitive analysis about {topic} for {audience}. Identify key players with strengths, weaknesses, and strategic recommendations.'
   };
 
   const template = PREFAB_TEMPLATES[prefabId];

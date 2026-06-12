@@ -31,7 +31,18 @@ try { slowDown = require('express-slow-down'); } catch(e) { console.warn('[WARN]
 // ─── Internal modules ───
 const { Logger } = require('./lib/logger');
 const { JobQueue } = require('./lib/queue');
-const { getSdkClient, getCapabilities, resetSdk, checkAuth } = require('./lib/sdk-wrapper');
+const { persistJobArtifact, storeArtifactFile } = require('./lib/vault-store');
+const { buildPortfolioExport } = require('./lib/portfolio-export');
+const {
+  mergeArtifactsIntoCatalog,
+  buildExportManifest,
+  manifestToCsv,
+  manifestToMarkdown,
+  collectVaultFiles,
+} = require('./lib/artifact-catalog');
+const { buildZip } = require('./lib/zip-export');
+const { buildSourceMarkdown, buildSourcesZip, summarizeExport } = require('./lib/sources-export');
+const { getSdkClient, getCapabilities, resetSdk, checkAuth, listNotebookSources } = require('./lib/sdk-wrapper');
 const {
   generateToken, verifyToken, authMiddleware,
   validatePasswordStrength, checkLockout, recordFailedAttempt, clearLockout,
@@ -81,6 +92,8 @@ const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), '.data');
 const VAULT_DIR = process.env.VAULT_DIR || path.join(process.cwd(), 'vault-storage');
 const INGESTION_DIR = process.env.INGESTION_DIR || path.join(process.cwd(), 'ingestion');
 const PUBLIC_DIR = path.join(process.cwd(), 'public');
+const { loadPrefabs } = require('./lib/prefabs');
+const { inspectArtifact } = require('./lib/cdi');
 const PREFABS_PATH = path.join(PUBLIC_DIR, 'prefabs.json');
 
 // Ensure directories
@@ -89,6 +102,7 @@ const PREFABS_PATH = path.join(PUBLIC_DIR, 'prefabs.json');
 // ─── Data Files ───
 const PROJECTS_FILE = path.join(DATA_DIR, 'projects.json');
 const ARTIFACTS_FILE = path.join(DATA_DIR, 'artifacts.json');
+const NOTEBOOKS_FILE = path.join(DATA_DIR, 'notebooks.json');
 
 function loadJSON(file, fallback=[]) {
   try { if(fs.existsSync(file)) return JSON.parse(fs.readFileSync(file,'utf8')); } catch(e){}
@@ -98,10 +112,17 @@ function saveJSON(file, data) {
   try { fs.writeFileSync(file, JSON.stringify(data,null,2)); } catch(e){ logger.error('Save failed', { file, error: e.message }); }
 }
 
+function saveArtifactCatalog(incoming) {
+  const existing = loadJSON(ARTIFACTS_FILE, []);
+  const result = mergeArtifactsIntoCatalog(existing, incoming);
+  saveJSON(ARTIFACTS_FILE, result.merged);
+  return result;
+}
+
 // ─── State ───
 let sdkClient = null;
 let sdkAuthed = false;
-let notebookInventory = [];
+let notebookInventory = loadJSON(NOTEBOOKS_FILE, []);
 let healthLog = [];
 let wsClients = new Set();
 
@@ -109,27 +130,43 @@ const jobQueue = new JobQueue(new Logger('queue'));
 
 jobQueue.on('job-created', (job) => broadcast({ type: 'job-created', job }));
 jobQueue.on('job-updated', (job) => broadcast({ type: 'job-updated', job }));
-jobQueue.on('job-completed', (job) => {
-  const artifact = {
-    id: generateId(),
-    jobId: job.id,
-    projectId: job.projectId,
-    notebookId: job.notebookId,
-    title: `${job.prefabName}: ${job.topic}`,
-    type: job.type,
-    status: 'completed',
-    prompt: job.prompt,
-    promptLength: job.promptLength,
-    createdAt: job.createdAt,
-    completedAt: job.completedAt || new Date().toISOString(),
-    size: 0,
-    localPath: ''
-  };
-  const artifacts = loadJSON(ARTIFACTS_FILE, []);
-  artifacts.unshift(artifact);
-  saveJSON(ARTIFACTS_FILE, artifacts);
+jobQueue.on('job-completed', async (job) => {
+  let artifact;
+  try {
+    artifact = await persistJobArtifact(job, {
+      vaultDir: VAULT_DIR,
+      artifactsFile: ARTIFACTS_FILE,
+      loadJSON,
+      saveJSON,
+      generateId,
+      getSdkClient: getLegacySdkClient,
+      logger,
+    });
+  } catch (e) {
+    logger.error('Vault persist failed', { jobId: job.id, error: e.message });
+    artifact = {
+      id: generateId(),
+      jobId: job.id,
+      projectId: job.projectId,
+      notebookId: job.notebookId,
+      title: `${job.prefabName}: ${job.topic}`,
+      type: job.type,
+      status: 'completed',
+      simulated: Boolean(job.result?.simulated),
+      prompt: job.prompt,
+      promptLength: job.promptLength,
+      createdAt: job.createdAt,
+      completedAt: job.completedAt || new Date().toISOString(),
+      size: 0,
+      localPath: '',
+    };
+    const artifacts = loadJSON(ARTIFACTS_FILE, []);
+    artifacts.unshift(artifact);
+    saveJSON(ARTIFACTS_FILE, artifacts);
+  }
   broadcast({ type: 'job-completed', job, artifact });
-  logHealth(`Job completed: ${job.prefabName} - ${job.topic}`);
+  const mode = artifact.simulated ? 'simulated' : 'sdk';
+  logHealth(`Job completed (${mode}): ${job.prefabName} - ${job.topic}`);
 });
 jobQueue.on('job-failed', (job) => {
   broadcast({ type: 'job-failed', job });
@@ -413,12 +450,26 @@ app.get('/api/status', (req, res) => {
 app.get('/api/sdk-status', async (req, res) => {
   try {
     const auth = await checkAuth();
+    const sessionPath = path.join(os.homedir(), '.notebooklm', 'session.json');
+    const sessionExists = fs.existsSync(sessionPath);
+    const setupSteps = auth.authenticated
+      ? ['SDK session active — prefab generation will use NotebookLM directly.']
+      : [
+          'Install SDK: npm install notebooklm-sdk',
+          'Authenticate: npx notebooklm-sdk login',
+          'Click Sync Auth in the dashboard or POST /api/auth/sync',
+          'Re-run Sync Fleet to load notebooks',
+        ];
     res.json({
       sdkAvailable: auth.sdkAvailable,
       authenticated: auth.authenticated,
+      sessionExists,
+      simulationMode: process.env.USE_SIMULATION === 'true',
       userInfo: auth.userInfo,
       capabilities: getCapabilities(),
-      timestamp: new Date().toISOString()
+      setupSteps,
+      error: auth.error || null,
+      timestamp: new Date().toISOString(),
     });
   } catch (e) {
     res.status(500).json({
@@ -426,7 +477,8 @@ app.get('/api/sdk-status', async (req, res) => {
       authenticated: false,
       userInfo: null,
       error: e.message,
-      timestamp: new Date().toISOString()
+      setupSteps: ['Check server logs and retry Sync Auth'],
+      timestamp: new Date().toISOString(),
     });
   }
 });
@@ -657,27 +709,57 @@ app.put('/api/workspaces/:id/members/:userId', authMiddleware, async (req, res, 
 
 // ─── Prefabs ───
 app.get('/api/prefabs', (req, res) => {
-  res.json(getEmbeddedPrefabs());
+  res.json(loadPrefabs());
 });
 
 function getEmbeddedPrefabs() {
-  try {
-    if(fs.existsSync(PREFABS_PATH)) {
-      return JSON.parse(fs.readFileSync(PREFABS_PATH, 'utf8'));
-    }
-  } catch(e) { logger.warn('Could not load external prefabs', { error: e.message }); }
-
-  return [
-    { id: 'deep-dive', name: 'Deep-Dive Podcast', type: 'audio', icon: '🎙️', description: 'Long-form conversational deep-dive', template: 'Create a deep-dive podcast episode about {topic} for {audience}. Use a conversational format with two hosts exploring the subject in depth, citing sources naturally. Target 15-20 minutes. Include an intro hook, segment transitions, and a closing summary with key takeaways.' },
-    { id: 'executive-briefing', name: 'Executive Briefing', type: 'report', icon: '📊', description: 'Concise executive summary report', template: 'Generate an executive briefing about {topic} tailored for {audience}. Structure: Executive Summary (3 bullets), Key Findings, Strategic Implications, Recommended Actions, and Risk Assessment. Keep it under 2 pages. Use professional business language.' },
-    { id: 'explainer-video', name: 'Explainer Video', type: 'video', icon: '🎬', description: 'Educational video script with visuals', template: 'Write an explainer video script about {topic} for {audience}. Include scene descriptions, on-screen text suggestions, narrator voiceover, and timing cues. Structure: Hook (0-5s), Problem (5-20s), Solution (20-50s), How It Works (50-80s), CTA (80-90s).' },
-    { id: 'investor-deck', name: 'Investor Slide Deck', type: 'slides', icon: '📑', description: 'Pitch deck for stakeholders', template: 'Create an investor slide deck outline about {topic} targeting {audience}. Include: Title Slide, Problem Statement, Market Opportunity, Solution Overview, Business Model, Traction, Team, Financials, and Ask. Provide speaker notes for each slide.' },
-    { id: 'mind-map', name: 'Knowledge Mind Map', type: 'map', icon: '🧠', description: 'Hierarchical knowledge structure', template: 'Generate a hierarchical mind map about {topic} designed for {audience}. Start with a central concept, branch into 5-7 main categories, each with 3-5 sub-branches. Include connection descriptions and brief explanatory notes for each node.' },
-    { id: 'critique-debate', name: 'Critique & Debate', type: 'audio', icon: '⚖️', description: 'Balanced argument analysis', template: 'Produce a critique and debate episode about {topic} for {audience}. Present two balanced perspectives with a moderator. Each side gets opening statements (2 min), rebuttals (1 min), and closing arguments (1 min). Include source citations and a neutrality disclaimer.' },
-    { id: 'tutorial', name: 'Tutorial Walkthrough', type: 'audio', icon: '🎓', description: 'Step-by-step instructional', template: 'Create a step-by-step tutorial about {topic} aimed at {audience}. Break into 5-8 clear steps. Use encouraging, instructional tone. Include prerequisites, time estimates per step, common pitfalls, and a recap. Assume the listener is following along.' },
-    { id: 'competitive-analysis', name: 'Competitive Analysis', type: 'report', icon: '🔍', description: 'Market competitor breakdown', template: 'Write a competitive analysis about {topic} for {audience}. Identify 4-6 key players. For each: Strengths, Weaknesses, Market Position, Strategy, and Threat Level. Include a comparison matrix and strategic recommendations. Use objective, data-driven language.' }
-  ];
+  return loadPrefabs();
 }
+
+// ─── Sources (NotebookLM Sources Exporter parity + SDK metadata) ───
+app.get('/api/notebooks/:id/sources', async (req, res) => {
+  try {
+    const sources = await listNotebookSources(req.params.id);
+    res.json({
+      notebookId: req.params.id,
+      sources: (sources || []).map((s) => ({
+        id: s.id,
+        title: s.title,
+        url: s.url,
+        kind: s.kind,
+        status: s.status,
+        createdAt: s.createdAt,
+      })),
+      count: sources?.length || 0,
+    });
+  } catch (e) {
+    res.status(503).json({ error: 'Failed to list sources', detail: e.message });
+  }
+});
+
+app.post('/api/sources/export-markdown', (req, res) => {
+  const source = req.body?.source;
+  if (!source) return res.status(400).json({ error: 'source object required' });
+  const markdown = buildSourceMarkdown(source);
+  res.json({ markdown, filename: `${(source.name || source.title || 'source').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.md` });
+});
+
+app.post('/api/sources/export-zip', (req, res) => {
+  const { sources, notebookTitle } = req.body || {};
+  if (!Array.isArray(sources) || !sources.length) {
+    return res.status(400).json({ error: 'sources array required' });
+  }
+  const { zip, zipFilename, fileCount } = buildSourcesZip(sources, notebookTitle);
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="${zipFilename}"`);
+  res.send(zip);
+});
+
+app.post('/api/sources/summarize', (req, res) => {
+  const exportRecord = req.body?.export;
+  if (!exportRecord) return res.status(400).json({ error: 'export object required' });
+  res.json(summarizeExport(exportRecord));
+});
 
 // ─── Fleet ───
 app.get('/api/fleet', async (req, res) => {
@@ -690,6 +772,7 @@ app.get('/api/fleet', async (req, res) => {
       sourceCount: n.sourceCount || n.sources?.length || 0,
       updatedAt: n.updatedAt || new Date().toISOString()
     }));
+    saveJSON(NOTEBOOKS_FILE, notebookInventory);
     logHealth(`Fleet synced: ${notebookInventory.length} notebooks`);
     res.json(notebookInventory);
   } catch(e) {
@@ -745,6 +828,20 @@ app.post('/api/generate', async (req, res) => {
   const { projectId, prefabId, notebookId, topic, audience } = req.body;
   if(!prefabId || !notebookId || !topic || !audience) {
     return res.status(400).json({ error: 'Missing required fields: prefabId, notebookId, topic, audience' });
+  }
+
+  if (process.env.USE_SIMULATION !== 'true') {
+    const auth = await checkAuth();
+    if (!auth.authenticated) {
+      return res.status(503).json({
+        error: 'NotebookLM SDK not connected',
+        detail: auth.error,
+        setupSteps: [
+          'Run: npx notebooklm-sdk login',
+          'Then click Sync Auth in the dashboard',
+        ],
+      });
+    }
   }
 
   let prefab;
@@ -866,10 +963,11 @@ app.post('/api/artifacts/scan', async (req, res) => {
           notebookId: art.notebookId || '',
           notebookName: notebookInventory.find(n => n.id === (art.notebookId || ''))?.title || 'Unknown',
           status: 'discovered',
+          sdkArtifactId: art.id || null,
           createdAt: art.createdAt || new Date().toISOString(),
           completedAt: art.completedAt || art.createdAt || new Date().toISOString(),
           size: art.size || 0,
-          source: 'api'
+          source: 'api',
         });
       }
     } catch(e) { logger.warn('Scan generic list failed', { error: e.message }); }
@@ -909,20 +1007,19 @@ app.post('/api/artifacts/scan', async (req, res) => {
       } catch(e) { /* method may not exist */ }
     }
 
-    const existing = loadJSON(ARTIFACTS_FILE, []);
-    const existingIds = new Set(existing.map(a => a.id));
-    const newArtifacts = allArtifacts.filter(a => !existingIds.has(a.id));
+    const catalog = saveArtifactCatalog(allArtifacts);
+    const totalCount = catalog.total;
+    logger.info('Scan complete', { discovered: totalCount, added: catalog.added, updated: catalog.updated, counts });
+    logHealth(`Scan complete: ${totalCount} artifacts (${catalog.added} new, ${catalog.updated} merged)`);
 
-    if(newArtifacts.length > 0) {
-      const merged = [...newArtifacts, ...existing];
-      saveJSON(ARTIFACTS_FILE, merged);
-    }
-
-    const totalCount = allArtifacts.length;
-    logger.info('Scan complete', { discovered: totalCount, counts });
-    logHealth(`Scan complete: ${totalCount} artifacts discovered`);
-
-    res.json({ success: true, discovered: totalCount, newArtifacts: newArtifacts.length, counts, artifacts: allArtifacts });
+    res.json({
+      success: true,
+      discovered: totalCount,
+      newArtifacts: catalog.added,
+      merged: catalog.updated,
+      counts,
+      artifacts: catalog.merged,
+    });
   } catch(e) {
     logger.error('Scan failed', { error: e.message });
     res.status(500).json({ error: 'Scan failed', detail: e.message });
@@ -1030,16 +1127,15 @@ app.post('/api/scrape', async (req, res) => {
 
     await browser.close();
 
-    const existing = loadJSON(ARTIFACTS_FILE, []);
-    const existingTitles = new Set(existing.map(a => `${a.title}|${a.notebookId}`));
-    const newScraped = allScraped.filter(a => !existingTitles.has(`${a.title}|${a.notebookId}`));
-
-    if(newScraped.length > 0) {
-      saveJSON(ARTIFACTS_FILE, [...newScraped, ...existing]);
-    }
-
-    logHealth(`Scrape complete: ${allScraped.length} artifacts from ${notebookInventory.length} notebooks`);
-    res.json({ success: true, scraped: allScraped.length, newScraped: newScraped.length, artifacts: allScraped });
+    const catalog = saveArtifactCatalog(allScraped);
+    logHealth(`Scrape complete: ${catalog.total} artifacts (${catalog.added} new, ${catalog.updated} merged)`);
+    res.json({
+      success: true,
+      scraped: allScraped.length,
+      newScraped: catalog.added,
+      merged: catalog.updated,
+      artifacts: catalog.merged,
+    });
 
   } catch(e) {
     logger.error('Scrape failed', { error: e.message });
@@ -1052,25 +1148,188 @@ app.get('/api/inspector/:artifactId', (req, res) => {
   const artifacts = loadJSON(ARTIFACTS_FILE, []);
   const artifact = artifacts.find(a => a.id === req.params.artifactId);
   if(!artifact) return res.status(404).json({ error: 'Artifact not found' });
+  res.json(inspectArtifact(artifact));
+});
 
-  const prompt = artifact.prompt || '';
-  const citationMatches = prompt.match(/\[\d+\]|source|cite|according to|research|study/gi) || [];
-  const cdi = Math.min(100, Math.round((citationMatches.length / Math.max(prompt.length / 100, 1)) * 10));
+// ─── Discovery sync (fleet + optional SDK scan) ───
+app.post('/api/discovery/sync', async (req, res) => {
+  const runScan = req.body?.scan !== false;
+  const runScrape = Boolean(req.body?.scrape);
+  const report = { fleet: null, scan: null, scrape: null };
 
-  res.json({
-    ...artifact,
-    cdi,
-    wordCount: prompt.split(/\s+/).length,
-    paragraphCount: prompt.split(/\n\n+/).length
-  });
+  try {
+    const client = await getLegacySdkClient();
+    const notebooks = await client.notebooks?.list?.() || [];
+    notebookInventory = notebooks.map(n => ({
+      id: n.id || n.notebookId || generateId(),
+      title: n.title || 'Untitled',
+      sourceCount: n.sourceCount || n.sources?.length || 0,
+      updatedAt: n.updatedAt || new Date().toISOString(),
+    }));
+    saveJSON(NOTEBOOKS_FILE, notebookInventory);
+    report.fleet = { notebooks: notebookInventory.length, ok: true };
+    logHealth(`Discovery fleet: ${notebookInventory.length} notebooks`);
+  } catch (e) {
+    report.fleet = { notebooks: notebookInventory.length, ok: false, error: e.message };
+  }
+
+  if (runScan) {
+    try {
+      const client = await getLegacySdkClient();
+      const allArtifacts = [];
+      const counts = { audio: 0, video: 0, slide_deck: 0, report: 0, mind_map: 0, unknown: 0 };
+      const generic = await client.artifacts?.list?.() || [];
+      for (const art of generic) {
+        const type = classifyArtifactType(art);
+        counts[type] = (counts[type] || 0) + 1;
+        allArtifacts.push({
+          id: art.id || generateId(),
+          title: art.title || 'Untitled',
+          type,
+          notebookId: art.notebookId || '',
+          notebookName: notebookInventory.find(n => n.id === (art.notebookId || ''))?.title || 'Unknown',
+          status: 'discovered',
+          source: 'api',
+          sdkArtifactId: art.id,
+          createdAt: art.createdAt || new Date().toISOString(),
+          completedAt: art.completedAt || art.createdAt || new Date().toISOString(),
+          size: art.size || 0,
+        });
+      }
+      const typeMethods = [
+        { method: 'listAudio', type: 'audio' },
+        { method: 'listVideo', type: 'video' },
+        { method: 'listSlideDecks', type: 'slide_deck' },
+        { method: 'listReports', type: 'report' },
+        { method: 'listMindMaps', type: 'mind_map' },
+      ];
+      for (const tm of typeMethods) {
+        const fn = client.artifacts?.[tm.method];
+        if (typeof fn !== 'function') continue;
+        const results = await fn.call(client.artifacts) || [];
+        for (const art of results) {
+          if (allArtifacts.some(a => a.sdkArtifactId === art.id)) continue;
+          counts[tm.type] = (counts[tm.type] || 0) + 1;
+          allArtifacts.push({
+            id: art.id || generateId(),
+            title: art.title || 'Untitled',
+            type: tm.type,
+            notebookId: art.notebookId || '',
+            notebookName: notebookInventory.find(n => n.id === (art.notebookId || ''))?.title || 'Unknown',
+            status: 'discovered',
+            source: 'api',
+            sdkArtifactId: art.id,
+            createdAt: art.createdAt || new Date().toISOString(),
+            completedAt: art.completedAt || art.createdAt || new Date().toISOString(),
+            size: art.size || 0,
+          });
+        }
+      }
+      const catalog = saveArtifactCatalog(allArtifacts);
+      report.scan = { ok: true, discovered: catalog.total, added: catalog.added, merged: catalog.updated, counts };
+      logHealth(`Discovery scan: ${catalog.added} new, ${catalog.updated} merged`);
+    } catch (e) {
+      report.scan = { ok: false, error: e.message };
+    }
+  }
+
+  if (runScrape) {
+    report.scrape = {
+      ok: false,
+      skipped: true,
+      hint: 'Call POST /api/scrape separately for Playwright UI discovery',
+    };
+  }
+
+  broadcast({ type: 'discovery-synced', report });
+  res.json({ success: true, report, notebooks: notebookInventory, artifacts: loadJSON(ARTIFACTS_FILE, []) });
 });
 
 // ─── Bulk Operations ───
 app.post('/api/bulk-download', (req, res) => {
   const { ids } = req.body;
   const artifacts = loadJSON(ARTIFACTS_FILE, []);
-  const selected = artifacts.filter(a => ids?.includes(a.id));
-  res.json({ success: true, count: selected.length, artifacts: selected });
+  const selected = ids?.length ? artifacts.filter(a => ids.includes(a.id)) : artifacts;
+  const files = selected.map((a) => ({
+    id: a.id,
+    title: a.title,
+    type: a.type,
+    hasFile: Boolean(a.localPath && fs.existsSync(a.localPath)),
+    downloadUrl: `/api/artifacts/${a.id}/download`,
+  }));
+  res.json({ success: true, count: selected.length, files, artifacts: selected });
+});
+
+app.post('/api/artifacts/bulk-store', async (req, res) => {
+  const { ids } = req.body;
+  if (!ids?.length) return res.status(400).json({ error: 'ids required' });
+  const artifacts = loadJSON(ARTIFACTS_FILE, []);
+  const results = [];
+  for (const id of ids) {
+    const idx = artifacts.findIndex(a => a.id === id);
+    if (idx === -1) {
+      results.push({ id, ok: false, error: 'not found' });
+      continue;
+    }
+    const stored = await storeArtifactFile(artifacts[idx], {
+      vaultDir: VAULT_DIR,
+      getSdkClient: getLegacySdkClient,
+      logger,
+    });
+    if (!stored.ok) {
+      results.push({ id, ok: false, error: stored.error });
+      continue;
+    }
+    artifacts[idx] = stored.artifact;
+    results.push({ id, ok: true, localPath: stored.artifact.localPath });
+  }
+  saveJSON(ARTIFACTS_FILE, artifacts);
+  broadcast({ type: 'artifacts-bulk-stored', count: results.filter(r => r.ok).length });
+  res.json({ success: results.every(r => r.ok), results });
+});
+
+app.post('/api/vault/export', (req, res) => {
+  const { ids, format = 'json', target } = req.body || {};
+  const artifacts = loadJSON(ARTIFACTS_FILE, []);
+  const selected = ids?.length ? artifacts.filter(a => ids.includes(a.id)) : artifacts;
+
+  if (format === 'cineforge' || format === 'lookbook' || (format === 'portfolio' && target)) {
+    const exportTarget = format === 'portfolio' ? target : format;
+    if (!['cineforge', 'lookbook'].includes(exportTarget)) {
+      return res.status(400).json({ error: 'target must be cineforge or lookbook' });
+    }
+    const payload = buildPortfolioExport(selected, exportTarget);
+    return res.json({ success: true, format: 'portfolio', target: exportTarget, export: payload });
+  }
+
+  const manifest = buildExportManifest(selected, {
+    filter: ids?.length ? 'selection' : 'all',
+    vaultDir: VAULT_DIR,
+  });
+
+  if (format === 'zip') {
+    const vaultFiles = collectVaultFiles(selected, VAULT_DIR);
+    const entries = [
+      { name: 'manifest.json', data: Buffer.from(JSON.stringify(manifest, null, 2), 'utf8') },
+      { name: 'manifest.csv', data: Buffer.from(manifestToCsv(manifest), 'utf8') },
+      { name: 'README.md', data: Buffer.from(manifestToMarkdown(manifest), 'utf8') },
+    ];
+    for (const f of vaultFiles) {
+      entries.push({ name: `files/${f.name}`, data: fs.readFileSync(f.path) });
+    }
+    const zip = buildZip(entries);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="notetoolslm-vault-export.zip"');
+    return res.send(zip);
+  }
+
+  if (format === 'csv') {
+    return res.json({ success: true, format, content: manifestToCsv(manifest), manifest });
+  }
+  if (format === 'md') {
+    return res.json({ success: true, format, content: manifestToMarkdown(manifest), manifest });
+  }
+  return res.json({ success: true, format: 'json', manifest });
 });
 
 app.delete('/api/artifacts/bulk', (req, res) => {
@@ -1084,6 +1343,17 @@ app.delete('/api/artifacts/bulk', (req, res) => {
 });
 
 // ─── Vault Storage (Local) ───
+app.get('/api/vault/files/serve', (req, res) => {
+  const { type, name } = req.query;
+  if (!type || !name) return res.status(400).json({ error: 'type and name query params required' });
+  const safeName = path.basename(String(name));
+  const filePath = path.join(VAULT_DIR, String(type), safeName);
+  if (!filePath.startsWith(VAULT_DIR) || !fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+  res.sendFile(filePath);
+});
+
 app.get('/api/vault/files', (req, res) => {
   try {
     const files = [];
@@ -1184,65 +1454,23 @@ app.post('/api/artifacts/:id/store', async (req, res) => {
   try {
     const artifacts = loadJSON(ARTIFACTS_FILE, []);
     const idx = artifacts.findIndex(a => a.id === req.params.id);
-    if(idx === -1) return res.status(404).json({ error: 'Artifact not found' });
+    if (idx === -1) return res.status(404).json({ error: 'Artifact not found' });
 
-    const artifact = artifacts[idx];
-    const typeDir = path.join(VAULT_DIR, artifact.type);
-    if(!fs.existsSync(typeDir)) fs.mkdirSync(typeDir, { recursive: true });
-
-    const safeName = (artifact.title || 'untitled').replace(/[^a-zA-Z0-9]/g, '_');
-    const ext = artifact.type === 'video' ? '.mp4' :
-                artifact.type === 'slide_deck' ? '.pdf' :
-                artifact.type === 'report' ? '.md' :
-                artifact.type === 'mind_map' ? '.json' : '.mp3';
-    const localPath = path.join(typeDir, `${safeName}_${artifact.id.slice(0,6)}${ext}`);
-
-    let downloaded = false;
-    try {
-      const client = await getLegacySdkClient();
-      const downloadFn = client.artifacts?.download || client.artifacts?.downloadAudio;
-      if(typeof downloadFn === 'function' && artifact.source === 'api') {
-        const result = await downloadFn.call(client.artifacts, artifact.id);
-        if(result) {
-          if(result.pipe) {
-            const writeStream = fs.createWriteStream(localPath);
-            result.pipe(writeStream);
-            await new Promise((resolve, reject) => {
-              writeStream.on('finish', resolve);
-              writeStream.on('error', reject);
-            });
-          } else if(Buffer.isBuffer(result)) {
-            fs.writeFileSync(localPath, result);
-          } else if(typeof result === 'string') {
-            fs.writeFileSync(localPath, result);
-          }
-          downloaded = true;
-        }
-      }
-    } catch(e) {
-      logger.warn('Store download failed', { artifactId: artifact.id, error: e.message });
+    const stored = await storeArtifactFile(artifacts[idx], {
+      vaultDir: VAULT_DIR,
+      getSdkClient: getLegacySdkClient,
+      logger,
+    });
+    if (!stored.ok) {
+      return res.status(502).json({ error: stored.error || 'Download failed' });
     }
 
-    if(!downloaded) {
-      return res.status(502).json({ error: 'Download failed', detail: 'Could not retrieve binary from SDK' });
-    }
-
-    const stats = fs.statSync(localPath);
-    const MAX_SIZE = 100 * 1024 * 1024;
-    if(stats.size > MAX_SIZE) {
-      fs.unlinkSync(localPath);
-      return res.status(413).json({ error: 'File too large', maxBytes: MAX_SIZE });
-    }
-
-    artifact.localPath = localPath;
-    artifact.localSize = stats.size;
-    artifacts[idx] = artifact;
+    artifacts[idx] = stored.artifact;
     saveJSON(ARTIFACTS_FILE, artifacts);
-
-    broadcast({ type: 'artifact-stored', artifact });
-    logHealth(`Stored locally: ${artifact.title}`);
-    res.json({ success: true, artifact });
-  } catch(e) {
+    broadcast({ type: 'artifact-stored', artifact: stored.artifact });
+    logHealth(`Stored locally: ${stored.artifact.title}`);
+    res.json({ success: true, artifact: stored.artifact });
+  } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
@@ -1399,7 +1627,9 @@ process.on('unhandledRejection', (reason, promise) => {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   const actualPort = server.address().port;
-  logger.info(`Fleet Orchestrator started`, { url: `http://localhost:${actualPort}` });
+  const url = `http://localhost:${actualPort}`;
+  logger.info('Fleet Orchestrator started', { url });
+  console.log(`NOTEtoolsLM_READY ${url}`);
   logger.info('Data paths', { projects: PROJECTS_FILE, artifacts: ARTIFACTS_FILE });
   if(chokidar) logger.info('Ingestion watcher active', { dir: INGESTION_DIR });
 });

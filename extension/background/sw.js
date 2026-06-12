@@ -3,6 +3,8 @@
 
 import { MSG_ACTIONS, STORAGE_KEYS } from '../shared/constants.js';
 import { storageGet, storageSet, generateId } from '../shared/utils.js';
+import { mergeArtifactsIntoCatalog } from '../shared/artifact-catalog.js';
+import { buildSourceMarkdown, buildSourcesZip, slugify } from '../shared/sources-export.js';
 
 const _b = chrome.i18n.getMessage.bind(chrome.i18n);
 
@@ -77,6 +79,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       case MSG_ACTIONS.SCAN_REQUEST:
         return await requestContentScan(sender.tab?.id);
 
+      case MSG_ACTIONS.SOURCES_EXTRACT_COMPLETE:
+        return await saveSourceExport(msg.data, msg.replace);
+
+      case MSG_ACTIONS.SOURCES_DOWNLOAD_MD:
+        return await downloadSourceMarkdown(msg.exportId, msg.sourceIndex);
+
+      case MSG_ACTIONS.SOURCES_DOWNLOAD_ZIP:
+        return await downloadSourcesZip(msg.exportId, msg.includeMedia);
+
+      case MSG_ACTIONS.SOURCES_CLEAR_EXPORTS:
+        await storageSet({ [STORAGE_KEYS.sourceExports]: [] });
+        chrome.runtime.sendMessage({ action: MSG_ACTIONS.SOURCES_EXPORT_SAVED }).catch(() => {});
+        return { cleared: true };
+
       default:
         return { error: _b('unknownAction', msg.action) };
     }
@@ -90,29 +106,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 async function mergeArtifacts(newArtifacts, notebookId, notebookName) {
   const data = await storageGet(STORAGE_KEYS.artifacts);
   const existing = data[STORAGE_KEYS.artifacts] || [];
-  const existingIds = new Set(existing.map(a => a.id));
-  const added = [];
+  const normalized = (newArtifacts || []).map((art) => ({
+    ...art,
+    id: art.id || generateId(),
+    notebookId: notebookId || art.notebookId || '',
+    notebookName: notebookName || art.notebookName || 'Unknown',
+    discoveredAt: art.discoveredAt || new Date().toISOString(),
+    source: art.source || 'scrape',
+  }));
+  const { merged, added } = mergeArtifactsIntoCatalog(existing, normalized);
+  merged.sort((a, b) => new Date(b.discoveredAt || b.createdAt) - new Date(a.discoveredAt || a.createdAt));
 
-  for (const art of newArtifacts) {
-    if (!art.id) art.id = generateId();
-    art.notebookId = notebookId || art.notebookId || '';
-    art.notebookName = notebookName || art.notebookName || 'Unknown';
-    art.discoveredAt = art.discoveredAt || new Date().toISOString();
-
-    if (!existingIds.has(art.id)) {
-      added.push(art);
-      existing.push(art);
-    }
-  }
-
-  // Sort by discoveredAt desc
-  existing.sort((a, b) => new Date(b.discoveredAt) - new Date(a.discoveredAt));
-
-  await storageSet({ [STORAGE_KEYS.artifacts]: existing });
+  await storageSet({ [STORAGE_KEYS.artifacts]: merged });
 
   // Update badge
-  const stored = existing.filter(a => a.localPath).length;
-  const total = existing.length;
+  const stored = merged.filter(a => a.localPath).length;
+  const total = merged.length;
   const pending = total - stored;
   chrome.action.setBadgeText({ text: pending > 0 ? String(pending) : '' });
   chrome.action.setBadgeBackgroundColor({ color: '#3b82f6' });
@@ -121,10 +130,10 @@ async function mergeArtifacts(newArtifacts, notebookId, notebookName) {
   chrome.runtime.sendMessage({
     action: MSG_ACTIONS.VAULT_SYNCED,
     count: total,
-    added: added.length
+    added,
   }).catch(() => {});
 
-  return { merged: true, added: added.length, total: existing.length };
+  return { merged: true, added, total: merged.length };
 }
 
 // ─── Register notebook ───
@@ -201,6 +210,105 @@ async function deleteArtifact(artifactId) {
   const filtered = artifacts.filter(a => a.id !== artifactId);
   await storageSet({ [STORAGE_KEYS.artifacts]: filtered });
   return { deleted: true };
+}
+
+// ─── Source exports (local storage) ───
+async function saveSourceExport(payload, replace = false) {
+  const info = payload?.extractionInfo || {};
+  const sources = (payload?.sources || []).map((s) => {
+    const { container, ...rest } = s;
+    return rest;
+  });
+
+  const data = await storageGet(STORAGE_KEYS.sourceExports);
+  const exports = data[STORAGE_KEYS.sourceExports] || [];
+  const notebookId = info.notebookId || '';
+  const existingIdx = exports.findIndex((e) => e.notebookId && e.notebookId === notebookId);
+
+  if (existingIdx >= 0 && !replace) {
+    return { duplicate: true, existingId: exports[existingIdx].id };
+  }
+
+  const record = {
+    id: generateId(),
+    notebookId,
+    notebookTitle: info.notebookTitle || info.notebookName || 'Notebook Export',
+    extractedAt: info.extractedAt || new Date().toISOString(),
+    url: info.url || '',
+    excludedCount: info.excludedSources || 0,
+    sources,
+  };
+
+  if (existingIdx >= 0 && replace) {
+    exports[existingIdx] = { ...record, id: exports[existingIdx].id };
+  } else {
+    exports.unshift(record);
+  }
+
+  await storageSet({ [STORAGE_KEYS.sourceExports]: exports });
+  chrome.runtime.sendMessage({ action: MSG_ACTIONS.SOURCES_EXPORT_SAVED, exportId: record.id }).catch(() => {});
+  return { saved: true, exportId: record.id, replaced: existingIdx >= 0 && replace };
+}
+
+async function getSourceExport(exportId) {
+  const data = await storageGet(STORAGE_KEYS.sourceExports);
+  const exports = data[STORAGE_KEYS.sourceExports] || [];
+  return exports.find((e) => e.id === exportId) || null;
+}
+
+async function downloadSourceMarkdown(exportId, sourceIndex) {
+  const exp = await getSourceExport(exportId);
+  if (!exp) return { error: 'Export not found' };
+  const source = exp.sources?.[sourceIndex];
+  if (!source) return { error: 'Source not found' };
+
+  const md = buildSourceMarkdown(source);
+  const filename = `notebooklm-sources/${slugify(source.name || 'source')}.md`;
+  const url = `data:text/markdown;charset=utf-8,${encodeURIComponent(md)}`;
+  const downloadId = await chrome.downloads.download({ url, filename, saveAs: false });
+  return { downloaded: true, downloadId };
+}
+
+async function fetchImageBytes(url) {
+  const tabs = await chrome.tabs.query({ url: '*://notebooklm.google.com/*' });
+  if (!tabs.length) return null;
+  try {
+    const resp = await chrome.tabs.sendMessage(tabs[0].id, {
+      action: 'sources:fetch:image',
+      url,
+    });
+    if (resp?.success && resp.data) return new Uint8Array(resp.data);
+  } catch (_) { /* fall through */ }
+  return null;
+}
+
+async function downloadSourcesZip(exportId, includeMedia = true) {
+  const exp = await getSourceExport(exportId);
+  if (!exp) return { error: 'Export not found' };
+
+  const imageMap = new Map();
+  if (includeMedia) {
+    for (const source of exp.sources || []) {
+      if (source.isImageSource && source.imageUrl) {
+        const bytes = await fetchImageBytes(source.imageUrl);
+        if (bytes) imageMap.set(source.name || source.title, bytes);
+      }
+    }
+  }
+
+  const { zipBytes, zipFilename } = buildSourcesZip(exp.sources, exp.notebookTitle, imageMap);
+  const blob = new Blob([zipBytes], { type: 'application/zip' });
+  const url = URL.createObjectURL(blob);
+  try {
+    const downloadId = await chrome.downloads.download({
+      url,
+      filename: `notebooklm-sources/${zipFilename}`,
+      saveAs: false,
+    });
+    return { downloaded: true, downloadId };
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
 }
 
 // ─── Request content script scan ───

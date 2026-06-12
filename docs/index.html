@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NOTEtoolsLM — NotebookLM power tools</title>
+  <meta name="description" content="Open-source command center for Google NotebookLM: export sources, manage studio media, local vault, fleet dashboard.">
+  <meta property="og:title" content="NOTEtoolsLM">
+  <meta property="og:description" content="Sources, studio media, and local vault for NotebookLM power users.">
+  <meta property="og:image" content="assets/og-image.png">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="assets/logo-mark.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="container nav-inner">
+    <a class="brand" href="index.html">
+      <img src="assets/logo-mark.svg" alt="" width="36" height="36">
+      NOTEtoolsLM
+    </a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#how">How it works</a>
+      <a href="install.html">Install</a>
+      <a href="https://github.com/lumenhelixsolutions/NOTEtoolsLM">GitHub</a>
+      <a class="btn primary sm" href="install.html">Get started</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero container">
+  <div class="hero-badge">v2.8.0 · Open source · Local-first</div>
+  <img class="hero-logo" src="assets/logo-mark.svg" alt="NOTEtoolsLM logo">
+  <h1>NotebookLM power tools</h1>
+  <p>Export every source as Markdown, manage studio media in a local vault, and orchestrate notebooks from one command center — without sending your data to the cloud.</p>
+  <div class="hero-cta">
+    <a class="btn primary" href="install.html">Install extension</a>
+    <a class="btn ghost" href="https://github.com/lumenhelixsolutions/NOTEtoolsLM">View on GitHub</a>
+  </div>
+  <p class="hero-note">Chrome Web Store listing coming soon · Developer install available now</p>
+</header>
+
+<section id="features">
+  <div class="container">
+    <h2 class="section-title">Built for power users</h2>
+    <p class="section-sub">NOTEtoolsLM complements NotebookLM with local tooling the official UI does not provide.</p>
+    <div class="grid">
+      <article class="card">
+        <span class="icon">📚</span>
+        <h3>Sources export</h3>
+        <p>Extract all sources from the current notebook, browse them in the side panel, and download individual <code>.md</code> files or a full ZIP — stored locally in your browser.</p>
+      </article>
+      <article class="card">
+        <span class="icon">🎬</span>
+        <h3>Studio vault</h3>
+        <p>Auto-detect audio, video, slides, mind maps, and reports. Store artifacts in a typed local vault with one-click download and bulk operations.</p>
+      </article>
+      <article class="card">
+        <span class="icon">🚀</span>
+        <h3>Prefab generation</h3>
+        <p>Eight production templates — podcasts, briefings, explainers, decks, tutorials — injected directly into NotebookLM from a floating toolbar.</p>
+      </article>
+      <article class="card">
+        <span class="icon">🛰️</span>
+        <h3>Fleet dashboard</h3>
+        <p>Optional local server on <code>localhost:3000</code> for notebook fleet sync, SDK orchestration, webhooks, and real-time pipeline progress.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="how" style="background: var(--bg2); border-block: 1px solid var(--border);">
+  <div class="container split">
+    <div>
+      <h2 class="section-title" style="text-align:left;margin-bottom:16px;">How it works</h2>
+      <p style="color:var(--fg2);margin-bottom:24px;">Two components, one workflow. Use the extension alone for sources and vault, or add the server for fleet-scale automation.</p>
+      <div class="steps" style="grid-template-columns:1fr;">
+        <div class="step">
+          <div class="step-num">1</div>
+          <h3>Open NotebookLM</h3>
+          <p>Navigate to any notebook at <code>notebooklm.google.com</code>.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <h3>Open NOTEtoolsLM</h3>
+          <p>Click the extension icon → side panel with <strong>Artifacts</strong> and <strong>Sources</strong> tabs.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <h3>Extract, store, export</h3>
+          <p>Sync studio media, extract sources to Markdown, or launch prefabs — all user-triggered, all local.</p>
+        </div>
+      </div>
+    </div>
+    <div class="split-visual">
+      <span class="pill">🔒 Data stays on your machine</span>
+      <span class="pill">📥 Sources → Markdown + ZIP</span>
+      <span class="pill">⚡ SDK when you need fleet scale</span>
+      <span class="pill">🧩 MV3 Chrome extension</span>
+      <p style="color:var(--fg3);font-size:12px;margin-top:12px;">Not affiliated with Google.</p>
+    </div>
+  </div>
+</section>
+
+<section id="screenshots" style="background: var(--bg2); border-block: 1px solid var(--border);">
+  <div class="container">
+    <h2 class="section-title">Screenshots</h2>
+    <p class="section-sub">Launch site, install guide, and Sources export workflow.</p>
+    <div class="screenshot-grid">
+      <figure class="shot">
+        <img src="assets/screenshots/01-launch-hero.png" alt="NOTEtoolsLM launch page hero" loading="lazy" width="640" height="450">
+        <figcaption>Launch page</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="assets/screenshots/04-sources-export.png" alt="Sources export side panel with extraction progress" loading="lazy" width="640" height="400">
+        <figcaption>Sources export</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="assets/screenshots/02-features.png" alt="Feature cards for vault and fleet dashboard" loading="lazy" width="640" height="450">
+        <figcaption>Feature overview</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="assets/screenshots/03-install-guide.png" alt="Install guide with extension and server steps" loading="lazy" width="640" height="450">
+        <figcaption>Install guide</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <div class="cta-band">
+      <h2>Ready to install?</h2>
+      <p>Load the unpacked extension in under a minute, or run the full stack with Node.js 18+.</p>
+      <div class="hero-cta">
+        <a class="btn primary" href="install.html">Installation guide</a>
+        <a class="btn" href="https://github.com/lumenhelixsolutions/NOTEtoolsLM#readme">Read the README</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="footer container">
+  <p>MIT © NOTEtoolsLM Collective · <a href="privacy-policy.html">Privacy</a> · <a href="https://github.com/lumenhelixsolutions/NOTEtoolsLM/issues">Issues</a></p>
+  <p style="margin-top:8px;">Not affiliated with Google or NotebookLM.</p>
+</footer>
+
+</body>
+</html>

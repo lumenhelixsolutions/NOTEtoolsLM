@@ -1,225 +1,212 @@
 <p align="center">
-  <img src="docs/assets/banner.svg" alt="NOTEtoolsLM v2" width="800">
+  <img src="docs/assets/banner.svg" alt="NOTEtoolsLM" width="800">
 </p>
 
-<h1 align="center">NOTEtoolsLM v2</h1>
+<h1 align="center">NOTEtoolsLM</h1>
 <p align="center">
-  <strong>The ultimate open-source orchestration suite for Google NotebookLM.</strong><br>
-  Fleet dashboard. Browser extension. Local vault. One unified command center.
+  <strong>NotebookLM power tools — sources, studio media, and local vault.</strong><br>
+  Open-source command center for Google NotebookLM power users.
 </p>
 
 <p align="center">
-  <a href="#"><img src="https://img.shields.io/badge/version-2.2.0-blue.svg" alt="Version"></a>
+  <a href="https://lumenhelixsolutions.github.io/NOTEtoolsLM/"><img src="https://img.shields.io/badge/launch_site-live-3b82f6.svg" alt="Launch site"></a>
+  <a href="#"><img src="https://img.shields.io/badge/version-2.8.0-blue.svg" alt="Version"></a>
   <a href="#"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License"></a>
   <a href="#"><img src="https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg" alt="Node"></a>
   <a href="#"><img src="https://img.shields.io/badge/platform-Chrome%20%7C%20Brave%20%7C%20Edge-purple.svg" alt="Platform"></a>
   <a href="#"><img src="https://img.shields.io/badge/status-Beta-orange.svg" alt="Status"></a>
-  <a href="https://chrome.google.com/webstore/detail/notetoolslm"><img src="https://img.shields.io/badge/Chrome%20Web%20Store-Install-brightgreen.svg" alt="Chrome Web Store"></a>
+</p>
+
+<p align="center">
+  <a href="https://lumenhelixsolutions.github.io/NOTEtoolsLM/install.html"><strong>Install guide</strong></a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/lumenhelixsolutions/NOTEtoolsLM">GitHub</a>
+  &nbsp;·&nbsp;
+  <a href="docs/ROADMAP.md">Roadmap</a>
 </p>
 
 ---
 
-## ✨ What is NOTEtoolsLM?
+## What is NOTEtoolsLM?
 
-NOTEtoolsLM is a **dual-architecture productivity suite** for power users of [Google NotebookLM](https://notebooklm.google.com):
+NOTEtoolsLM is a **local-first productivity suite** for [Google NotebookLM](https://notebooklm.google.com). It adds what the official UI lacks: bulk source export, studio media vault, prefab generation, and an optional fleet dashboard — without sending your notebook data to third-party servers.
 
-| Component | Tech | What it does |
-|-----------|------|--------------|
-| **Fleet Orchestrator** | Node.js + Express + WebSocket | Local dashboard & API server on `localhost:3000` |
-| **Browser Extension** | Chrome Extension MV3 | Side panel + content-script tooling directly on `notebooklm.google.com` |
+| Component | Tech | Role |
+|-----------|------|------|
+| **Browser extension** | Chrome MV3 | Side panel on NotebookLM: sources export, artifact vault, prefabs |
+| **Fleet orchestrator** | Node.js + Express + WebSocket | Optional `localhost:3000` dashboard, SDK, webhooks |
 
-Instead of hunting through notebooks one-by-one, NOTEtoolsLM gives you a **unified fleet view**: auto-detect artifacts, batch-manage them, generate from prefabs, and store everything in a local vault.
-
----
-
-## 🚀 Features
-
-### Fleet Dashboard
-- 📊 **Notebook Fleet Sync** — list and manage all your notebooks via SDK
-- 🏭 **Production Pipeline** — Kanban board (Queued → Running → Processing → Completed → Failed)
-- 🔍 **Artifact Discovery** — dual strategy: SDK API scan + Playwright UI scraping
-- 🗂️ **Local Vault** — organized storage by type (`~/vault-storage/{audio,video,slides,maps,reports}/`)
-- 📦 **Bulk Operations** — select, download, store, delete across many artifacts at once
-- 🔎 **Inspector Panel** — metadata, prompt preview, and synthetic CDI (Citation Density Index)
-- 🔄 **Real-time** — WebSocket live updates with HTTP polling fallback
-- ⚡ **Real SDK Integration** — primary artifact creation via NotebookLM SDK with automatic simulation fallback
-- 📈 **Streaming Progress** — live progress percentages pushed via WebSocket as SDK calls advance
-- 🔁 **Exponential Backoff** — automatic retry (2s → 5s → 15s → 30s) for SDK rate limits
-- 🔗 **Webhook Callbacks** — `POST /api/webhook/notebooklm` with HMAC-SHA256 signature validation
-- 💾 **Binary Vault Storage** — real MP3/MP4/PDF downloads with 100MB size limits and proper Content-Type headers
-
-### Browser Extension
-- 🧩 **Side Panel** — persistent vault grid, inspector, settings, onboarding gate
-- 🎯 **Floating Toolbar** — quick-launch prefab generation injected on NotebookLM
-- 📥 **One-click Store** — download and organize artifacts without leaving the page
-- 🔔 **Badge Counts** — see how many artifacts are waiting at a glance
-
-### Content Generation (Prefabs)
-8 production-ready templates:
-
-| Prefab | Type | Description |
-|--------|------|-------------|
-| 🎙️ Deep-Dive Podcast | audio | 15-20 min conversational exploration |
-| 📊 Executive Briefing | report | One-page summary with actions |
-| 🎬 Explainer Video | video | Script with scenes, narration, timing |
-| 📑 Investor Slide Deck | slides | 10-slide pitch with speaker notes |
-| 🧠 Knowledge Mind Map | map | Hierarchical concept branches |
-| ⚖️ Critique & Debate | audio | Balanced two-perspective debate |
-| 🎓 Tutorial Walkthrough | audio | Step-by-step instructional |
-| 🔍 Competitive Analysis | report | Market breakdown with matrix |
+**Launch site:** [lumenhelixsolutions.github.io/NOTEtoolsLM](https://lumenhelixsolutions.github.io/NOTEtoolsLM/)
 
 ---
 
-## 📦 Installation
+## Features
 
-### Prerequisites
-- [Node.js](https://nodejs.org/) >= 18.0.0
-- Google Chrome, Brave, or Edge (Chromium-based)
+### Sources export (new in v2.8)
+Inspired by community tooling for NotebookLM source backups — reimplemented as an integrated, MIT-licensed feature.
 
-### 1. Clone & Install
+- **Extract All Sources** from the current notebook (DOM-based, runs in-browser)
+- **Local export library** — browse past extractions in the side panel
+- **Per-source Markdown** download with title, URL, and body
+- **Bulk ZIP** export with optional image files
+- Respects NotebookLM source checkbox selection (excluded sources skipped)
+- **100% local** — no server required for extraction or storage
+
+### Studio media vault
+- Auto-detect audio, video, slides, mind maps, and reports
+- Side panel grid with filter chips and inspector (CDI score)
+- One-click store to `~/Downloads/vault-storage/`
+- Badge count for pending artifacts
+
+### Prefab generation
+Eight templates injected via floating toolbar or side panel:
+
+| Prefab | Type |
+|--------|------|
+| Deep-Dive Podcast | audio |
+| Executive Briefing | report |
+| Explainer Video | video |
+| Investor Slide Deck | slide_deck |
+| Knowledge Mind Map | mind_map |
+| Critique & Debate | audio |
+| Tutorial Walkthrough | audio |
+| Competitive Analysis | report |
+
+### Fleet dashboard (optional server)
+- Notebook fleet sync via NotebookLM SDK
+- Production pipeline with WebSocket progress
+- Bulk download, store, delete across artifacts
+- Webhook callbacks with HMAC validation
+- JWT auth, SQLite users, brute-force protection
+
+---
+
+## Quick start
+
+### Extension only (sources + vault)
+
+Best if you only need sources export and artifact management.
+
+1. Clone this repo
+2. Open `chrome://extensions` → enable **Developer mode**
+3. **Load unpacked** → select the `extension/` folder
+4. Open [notebooklm.google.com](https://notebooklm.google.com) → click the NOTEtoolsLM icon
+5. Use the **Sources** tab → **Extract All Sources**
+
+Detailed steps: [install guide](https://lumenhelixsolutions.github.io/NOTEtoolsLM/install.html)
+
+### Full stack (fleet + SDK)
+
 ```bash
-git clone https://github.com/notetoolslm/notetoolslm.git
-cd notetoolslm
+git clone https://github.com/lumenhelixsolutions/NOTEtoolsLM.git
+cd NOTEtoolsLM
 npm install
-```
-
-### 2. Start the Fleet Orchestrator
-```bash
 npm start
-# Dashboard opens at http://localhost:3000
+# Dashboard → http://localhost:3000
 ```
 
-### 3. Install the Extension
+Register an account via the extension side panel, then optionally:
 
-#### Option A: Chrome Web Store (Recommended)
-1. Visit the **[NOTEtoolsLM Chrome Web Store page](https://chrome.google.com/webstore/detail/notetoolslm)**
-2. Click **Add to Chrome**
-3. Accept the permissions
-4. Click the NOTEtoolsLM icon in the toolbar to open the side panel
-
-#### Option B: Developer Mode (Unpacked)
-1. Open Chrome/Brave and go to `chrome://extensions/`
-2. Enable **Developer Mode** (toggle top-right)
-3. Click **Load unpacked**
-4. Select the `extension/` folder
-5. Click the NOTEtoolsLM icon in the toolbar to open the side panel
-
-### 4. Set up Server Authentication
-
-NOTEtoolsLM v2.2.0 requires a local user account to access the API:
-
-```bash
-# 1. Start the server
-npm start
-
-# 2. Register your first account via the extension side panel
-#    - Open the NOTEtoolsLM side panel in Chrome
-#    - Click "Create Account" and choose a username/password
-#    - Or use curl:
-curl -X POST http://localhost:3000/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"SecurePass1"}'
-
-# 3. Log in through the extension or via curl:
-curl -X POST http://localhost:3000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"SecurePass1"}'
-```
-
-**Password requirements:** minimum 8 characters, at least 1 uppercase letter, 1 number.
-
-**JWT Secret:** For production or persistent deployments, set `JWT_SECRET` in your `.env` file:
-
-```bash
-JWT_SECRET=$(node -e "console.log(require('crypto').randomBytes(64).toString('hex'))")
-```
-
-### 5. Authenticate with NotebookLM SDK (Optional)
 ```bash
 npx notebooklm-sdk login
-# Or click "Sync Auth" in the dashboard
 ```
 
----
-
-## 🖥️ Screenshots
-
-> *(Placeholder — add 1280×800 screenshots here before launch)*
-
-| Fleet Dashboard | Pipeline Kanban | Vault Grid | Extension Side Panel | Prefab Launcher |
-|-----------------|-----------------|------------|----------------------|-----------------|
-| `docs/assets/screenshots/01-fleet-dashboard.txt` | `docs/assets/screenshots/02-pipeline-kanban.txt` | `docs/assets/screenshots/03-vault-file-grid.txt` | `docs/assets/screenshots/04-extension-side-panel.txt` | `docs/assets/screenshots/05-prefab-launcher.txt` |
+Copy `.env.example` to `.env` and set `JWT_SECRET` for persistent auth across restarts.
 
 ---
 
-## 🏗️ Architecture
+## Screenshots
+
+| Launch site | Sources export | Features | Install |
+|-------------|------------------|----------|---------|
+| ![Launch](docs/assets/screenshots/01-launch-hero.png) | ![Sources](docs/assets/screenshots/04-sources-export.png) | ![Features](docs/assets/screenshots/02-features.png) | ![Install](docs/assets/screenshots/03-install-guide.png) |
+
+---
+
+## Architecture
 
 ```
-┌─────────────────┐      WebSocket/REST       ┌──────────────────┐
-│   Chrome Ext    │ ◄──────────────────────► │  Fleet Orchestrator │
-│  (sidepanel)    │                           │   (Node.js/Express) │
-└────────┬────────┘                           └─────────┬──────────┘
-         │                                              │
-         │ content_script.js                            │ Playwright
-         ▼                                              ▼
-┌─────────────────┐                           ┌──────────────────┐
-│ notebooklm.google│                           │  notebooklm SDK  │
-│   .com          │                           │   + local vault  │
-└─────────────────┘                           └──────────────────┘
+┌──────────────────┐     REST / WebSocket      ┌─────────────────────┐
+│  Chrome Extension │ ◄──────────────────────► │ Fleet Orchestrator  │
+│  Artifacts        │                          │ (Node.js, optional) │
+│  Sources export   │                          └──────────┬──────────┘
+└────────┬─────────┘                                     │
+         │ content script                                │ SDK / Playwright
+         ▼                                               ▼
+┌──────────────────┐                          ┌─────────────────────┐
+│ notebooklm.google │                          │  Local vault + API   │
+│     .com        │                          └─────────────────────┘
+└──────────────────┘
 ```
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full technical deep-dive.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the technical deep-dive.
 
 ---
 
-## 🛣️ Roadmap
+## API highlights
 
-- [x] v2.0.0-beta — Fleet dashboard, extension, vault, 8 prefabs
-- [ ] v2.1.0 — Real NotebookLM SDK artifact generation (replace simulation)
-- [x] v2.2.0 — Server-side authentication & security (JWT, bcrypt, SQLite, brute-force protection)
-- [x] v2.3.0 — Chrome Web Store launch assets & submission prep
-- [ ] v2.4.0 — Multi-language i18n expansion
-- [ ] v2.5.0 — Collaborative team workspaces
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/notebooks/:id/sources` | List sources via SDK |
+| `POST /api/sources/export-zip` | Build ZIP from source payload |
+| `POST /api/discovery/sync` | Fleet artifact discovery |
+| `POST /api/generate` | Prefab → SDK artifact job |
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for detailed milestones.
+Full API runs on the local server only. Sources extraction does not require these routes.
 
 ---
 
-## 🤝 Contributing
+## Development
 
-We welcome contributions! Please read [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for guidelines on:
-- Setting up your dev environment
-- Code style and conventions
-- Testing requirements
-- Pull request process
-
-### Quick Dev Setup
 ```bash
 npm install
-npm run dev      # auto-reload server on file changes
-npm test         # run smoke tests
-npm run build    # package extension zip
+npm run dev          # server with --watch
+npm test             # smoke tests
+npm run build        # package extension zip
+node scripts/generate-icons.js   # refresh icons from logo SVG
 ```
 
----
-
-## 🔒 Security
-
-See [docs/SECURITY.md](docs/SECURITY.md) for our security policy and vulnerability reporting process.
-
-Key principles:
-- **Local-first** — your data stays on your machine
-- **No telemetry** — we don't phone home
-- **Explicit consent** — all actions are user-triggered
+See [AGENTS.md](AGENTS.md) and [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).
 
 ---
 
-## 📜 License
+## Roadmap
 
-MIT © NOTEtoolsLM Collective. See [LICENSE](LICENSE) for details.
+| Milestone | Theme | Target |
+|-----------|-------|--------|
+| M1 | SDK foundation repair | v2.9.0 |
+| M2 | Sources command center | v3.0.0 |
+| M3 | Studio media factory | v3.1.0 |
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) and [docs/plans/2026-06-12-notetoolslm-api-power-5x5.md](docs/plans/2026-06-12-notetoolslm-api-power-5x5.md).
+
+---
+
+## Security & privacy
+
+- **Local-first** — exports and vault data stay on your machine
+- **User-triggered** — no auto-scrape or auto-send
+- **No telemetry** — the project does not phone home
+- **Not affiliated with Google**
+
+See [docs/SECURITY.md](docs/SECURITY.md) and [docs/privacy-policy.html](docs/privacy-policy.html).
+
+---
+
+## Contributing
+
+Contributions welcome. Run `npm run ci` before opening a PR.
+
+---
+
+## License
+
+MIT © NOTEtoolsLM Collective. See [LICENSE](LICENSE).
 
 ---
 
 <p align="center">
-  <sub>Built with 💜 by the community. Not affiliated with Google.</sub>
+  <img src="docs/assets/logo-mark.svg" alt="NOTEtoolsLM" width="48">
+  <br>
+  <sub>Built with care by the community · <a href="https://lumenhelixsolutions.github.io/NOTEtoolsLM/">Launch site</a></sub>
 </p>

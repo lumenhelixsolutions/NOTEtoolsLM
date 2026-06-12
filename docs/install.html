@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Install NOTEtoolsLM</title>
+  <meta name="description" content="Install the NOTEtoolsLM Chrome extension and optional local server.">
+  <link rel="icon" href="assets/logo-mark.svg" type="image/svg+xml">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="container nav-inner">
+    <a class="brand" href="index.html">
+      <img src="assets/logo-mark.svg" alt="" width="36" height="36">
+      NOTEtoolsLM
+    </a>
+    <div class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="https://github.com/lumenhelixsolutions/NOTEtoolsLM">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container install-hero">
+  <img src="assets/logo-mark.svg" alt="" width="72" height="72" style="border-radius:16px;margin-bottom:20px;box-shadow:var(--shadow)">
+  <h1 style="font-size:28px;font-weight:700;margin-bottom:8px;">Install NOTEtoolsLM</h1>
+  <p style="color:var(--fg2)">Extension-first install. The local server is optional for fleet dashboard and SDK features.</p>
+</div>
+
+<div class="container" style="text-align:center">
+  <div id="browser-badge" class="browser-badge">Detecting browser...</div>
+</div>
+
+<div class="container install-steps">
+
+  <div class="step">
+    <div class="step-num">A</div>
+    <h3>Extension only (fastest)</h3>
+    <p>Sources export and artifact vault work without the server.</p>
+    <ol style="color:var(--fg2);font-size:13px;padding-left:20px;margin:12px 0;display:flex;flex-direction:column;gap:6px;">
+      <li>Clone or download the repo from <a href="https://github.com/lumenhelixsolutions/NOTEtoolsLM">GitHub</a></li>
+      <li>Open <code>chrome://extensions</code> (or Brave/Edge equivalent)</li>
+      <li>Enable <strong>Developer mode</strong></li>
+      <li>Click <strong>Load unpacked</strong> → select the <code>extension/</code> folder</li>
+      <li>Open <code>notebooklm.google.com</code> → click the NOTEtoolsLM icon</li>
+    </ol>
+    <a class="btn primary sm" href="https://github.com/lumenhelixsolutions/NOTEtoolsLM/archive/refs/heads/main.zip">Download source (.zip)</a>
+  </div>
+
+  <div class="step">
+    <div class="step-num">B</div>
+    <h3>Full stack (fleet + SDK)</h3>
+    <p>Dashboard, webhooks, and NotebookLM SDK orchestration on localhost.</p>
+    <div class="code" id="clone-code">git clone https://github.com/lumenhelixsolutions/NOTEtoolsLM.git
+cd NOTEtoolsLM
+npm install
+npm start</div>
+    <p style="color:var(--fg2);font-size:13px;margin-top:8px;">Dashboard: <code>http://localhost:3000</code> · Register via the extension side panel.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-num">C</div>
+    <h3>NotebookLM SDK (optional)</h3>
+    <p>Authenticate once for fleet sync and programmatic artifact creation.</p>
+    <div class="code">npx notebooklm-sdk login</div>
+    <p style="color:var(--fg2);font-size:13px;">Then tap the key icon in the extension side panel to sync auth with the server.</p>
+  </div>
+
+</div>
+
+<div class="container" style="max-width:560px;margin-bottom:48px">
+  <h3 style="font-size:15px;margin-bottom:12px;">Troubleshooting</h3>
+  <div class="card" style="padding:16px">
+    <p style="font-size:13px;color:var(--fg2);margin-bottom:8px"><strong>Manifest missing</strong> — Select the <code>extension/</code> folder, not the repo root or a zip root.</p>
+    <p style="font-size:13px;color:var(--fg2);margin-bottom:8px"><strong>Side panel empty</strong> — Create a local account when prompted (requires server for full API).</p>
+    <p style="font-size:13px;color:var(--fg2)"><strong>Sources extract fails</strong> — Stay on the notebook tab during extraction; NotebookLM UI must be fully loaded.</p>
+  </div>
+</div>
+
+<footer class="footer container">
+  <p><a href="index.html">← Back to home</a> · NOTEtoolsLM v2.8.0 · <a href="privacy-policy.html">Privacy</a></p>
+</footer>
+
+<script>
+function detectBrowser() {
+  const ua = navigator.userAgent;
+  const badge = document.getElementById('browser-badge');
+  let name = 'Browser';
+  let ok = true;
+  if (ua.includes('Brave')) name = 'Brave';
+  else if (ua.includes('Edg')) name = 'Edge';
+  else if (ua.includes('Chrome')) name = 'Chrome';
+  else { ok = false; name = 'Use Chrome, Brave, or Edge'; }
+  badge.className = ok ? 'browser-badge ok' : 'browser-badge';
+  badge.textContent = ok ? `✓ ${name} detected` : `⚠ ${name}`;
+}
+detectBrowser();
+</script>
+</body>
+</html>

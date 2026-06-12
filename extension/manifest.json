@@ -27,7 +27,7 @@
   "content_scripts": [
     {
       "matches": ["*://notebooklm.google.com/*"],
-      "js": ["content/content.js"],
+      "js": ["content/sources-scraper.js", "content/content.js"],
       "run_at": "document_idle"
     }
   ],
