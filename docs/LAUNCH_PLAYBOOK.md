@@ -57,7 +57,7 @@
 
 Stop hunting. Start orchestrating.
 
-🔗 github.com/notetoolslm/notetoolslm
+🔗 github.com/lumenhelixsolutions/NOTEtoolsLM
 ```
 
 **Hacker News / Reddit Post:**
@@ -110,8 +110,8 @@ Would love feedback from heavy NotebookLM users.
    - **Category:** Productivity
    - **Language:** English (default)
    - **Email:** Provide a support email
-   - **Privacy Policy:** Link to `https://notetoolslm.github.io/notetoolslm/privacy-policy.html` (or host `docs/privacy-policy.html` on GitHub Pages)
-   - **Website:** `https://github.com/notetoolslm/notetoolslm`
+   - **Privacy Policy:** Link to `https://github.com/lumenhelixsolutions/NOTEtoolsLM/blob/master/docs/privacy-policy.html`
+   - **Website:** `https://github.com/lumenhelixsolutions/NOTEtoolsLM`
    - **Support:** Link to GitHub Issues
 
 4. **Assets Upload**

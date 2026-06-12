@@ -161,7 +161,7 @@ a{color:var(--accent);text-decoration:none}
 
 <!-- Footer -->
 <div class="footer">
-  NOTEtoolsLM v2 v1.0.0 &middot; Works with Brave & Chrome &middot; <a href="https://github.com/pipelinelm/pipelinelm-pro">GitHub</a>
+  NOTEtoolsLM v2.8.0 &middot; Works with Brave &amp; Chrome &middot; <a href="https://github.com/lumenhelixsolutions/NOTEtoolsLM">GitHub</a>
 </div>
 
 <script>
@@ -238,7 +238,7 @@ async function getExtensionId() {
 
 // Check if extension is already installed via external messaging
 try {
-  chrome.runtime.sendMessage('pipelinelm-pro', { ping: true }, (resp) => {
+  chrome.runtime.sendMessage('notetoolslm-extension', { ping: true }, (resp) => {
     if (resp) {
       document.getElementById('check-loaded').classList.add('ok');
     }

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "NOTEtoolsLM",
-  "version": "2.0.0",
+  "version": "2.8.0",
   "description": "The ultimate open-source orchestration suite for Google NotebookLM — fleet dashboard, vault, and prefab generation.",
   "default_locale": "en",
   "minimum_chrome_version": "114",
