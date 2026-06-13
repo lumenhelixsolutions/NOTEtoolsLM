@@ -51,6 +51,18 @@ Copy `.env.example` to `.env` and customize:
 - `DATA_DIR` — JSON persistence path
 - `VAULT_DIR` — Local artifact storage path
 
+## Launch site (`docs/`)
+
+GitHub Pages landing at `docs/index.html`. Regenerate marketing assets:
+
+```bash
+npm run capture:launch   # screenshots + demo GIF/WebM
+npm run capture:screenshots
+npm run capture:demo
+```
+
+Outputs: `docs/assets/screenshots/*.png`, `docs/assets/demo.gif`, `docs/assets/demo.webm`.
+
 ## Testing
 
 ```bash
