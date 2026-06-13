@@ -4,41 +4,99 @@
 <meta charset="UTF-8">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-body{margin:0;background:#0a0e17;font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;justify-content:center;padding:40px}
+body{margin:0;background:#0a0e17;font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;justify-content:center;align-items:center;min-height:100vh}
 .panel{width:360px;background:#111827;border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.5)}
 .hdr{display:flex;justify-content:space-between;align-items:center;padding:12px;border-bottom:1px solid rgba(255,255,255,.06);background:#0f172a}
 .brand{font-weight:700;font-size:13px}
 .tabs{display:flex;gap:4px;padding:8px 12px 0}
-.tab{flex:1;padding:7px;border:1px solid rgba(255,255,255,.06);border-bottom:none;border-radius:8px 8px 0 0;background:#0a0e17;color:#64748b;font-size:11px;font-weight:600;text-align:center}
+.tab{flex:1;padding:7px;border:1px solid rgba(255,255,255,.06);border-bottom:none;border-radius:8px 8px 0 0;background:#0a0e17;color:#64748b;font-size:11px;font-weight:600;text-align:center;transition:background .2s,color .2s}
 .tab.on{background:#111827;color:#e2e8f0}
 .actions{display:flex;gap:8px;padding:12px}
 .btn{padding:8px 12px;border-radius:8px;border:none;font-size:11px;font-weight:600;cursor:default}
 .btn-p{background:#3b82f6;color:#fff}
 .btn-g{background:transparent;color:#94a3b8;border:1px solid rgba(255,255,255,.08)}
-.card{margin:0 12px 8px;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);background:#1a2236}
+.card{margin:0 12px 8px;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);background:#1a2236;opacity:1;transition:opacity .3s}
+.card.dim{opacity:.45}
 .card h4{margin:0 0 4px;font-size:12px}
 .card p{margin:0;font-size:10px;color:#64748b}
-.overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .35s}
+.overlay.show{opacity:1}
 .box{background:#0f172a;border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:24px;width:280px;text-align:center}
 .bar{height:6px;background:#1e293b;border-radius:3px;margin:16px 0;overflow:hidden}
-.fill{height:100%;width:62%;background:#3b82f6;border-radius:3px}
+.fill{height:100%;width:0;background:linear-gradient(90deg,#3b82f6,#8b5cf6);border-radius:3px;transition:width .12s linear}
+.status{font-size:12px;color:#94a3b8;min-height:18px}
+.done{color:#10b981;font-weight:600}
 </style>
 </head>
 <body>
 <div class="panel">
   <div class="hdr"><span class="brand">⚡ NOTEtoolsLM</span><span style="font-size:10px;color:#64748b">SDK connected</span></div>
-  <div class="tabs"><div class="tab">Artifacts</div><div class="tab on">Sources</div></div>
-  <div class="actions"><button class="btn btn-p">Extract All Sources</button><button class="btn btn-g">Clear</button></div>
-  <div class="card"><h4>Q2 Research Notebook</h4><p>12 sources · 2h ago</p></div>
-  <div class="card"><h4>Investor Memo Pack</h4><p>8 sources · 1d ago</p></div>
-  <div class="card"><h4>Competitive Landscape</h4><p>23 sources · 3d ago · 1 error</p></div>
+  <div class="tabs"><div class="tab" id="tab-artifacts">Artifacts</div><div class="tab on" id="tab-sources">Sources</div></div>
+  <div class="actions"><button class="btn btn-p" id="extract-btn">Extract All Sources</button><button class="btn btn-g">Clear</button></div>
+  <div class="card" id="card-0"><h4>Q2 Research Notebook</h4><p>12 sources · 2h ago</p></div>
+  <div class="card dim" id="card-1"><h4>Investor Memo Pack</h4><p>8 sources · 1d ago</p></div>
+  <div class="card dim" id="card-2"><h4>Competitive Landscape</h4><p>23 sources · 3d ago</p></div>
 </div>
-<div class="overlay">
+<div class="overlay" id="overlay">
   <div class="box">
-    <h3 style="margin:0 0 8px;font-size:15px">Extracting NotebookLM Sources</h3>
-    <div class="bar"><div class="fill"></div></div>
-    <p style="margin:0;font-size:12px;color:#94a3b8">Extracting 5/12: Market sizing report</p>
+    <h3 style="margin:0 0 8px;font-size:15px" id="overlay-title">Extracting NotebookLM Sources</h3>
+    <div class="bar"><div class="fill" id="fill"></div></div>
+    <p class="status" id="status">Preparing extraction…</p>
   </div>
 </div>
+<script>
+const SOURCES = [
+  'Market sizing report',
+  'Competitive landscape PDF',
+  'Investor memo draft',
+  'User interview notes',
+  'Product roadmap Q2',
+  'Pricing analysis',
+  'GTM strategy deck',
+  'Technical architecture',
+  'Customer feedback summary',
+  'Regulatory overview',
+  'Partnership brief',
+  'Executive summary',
+];
+const fill = document.getElementById('fill');
+const status = document.getElementById('status');
+const overlay = document.getElementById('overlay');
+const title = document.getElementById('overlay-title');
+let frame = 0;
+
+function setProgress(pct, text, done) {
+  fill.style.width = pct + '%';
+  status.textContent = text;
+  status.className = done ? 'status done' : 'status';
+}
+
+window.__demoTick = function(tick) {
+  const phase = tick % 120;
+  if (phase < 8) {
+    overlay.classList.remove('show');
+    setProgress(0, 'Preparing extraction…', false);
+    title.textContent = 'Extracting NotebookLM Sources';
+    return;
+  }
+  overlay.classList.add('show');
+  const progressPhase = phase - 8;
+  const total = 100;
+  const pct = Math.min(100, Math.round((progressPhase / total) * 100));
+  const idx = Math.min(SOURCES.length - 1, Math.floor((progressPhase / total) * SOURCES.length));
+  if (pct >= 100) {
+    setProgress(100, '✓ 12 sources exported to Markdown', true);
+    title.textContent = 'Export complete';
+  } else {
+    setProgress(pct, `Extracting ${idx + 1}/${SOURCES.length}: ${SOURCES[idx]}`, false);
+  }
+};
+
+window.__demoReset = function() {
+  overlay.classList.remove('show');
+  setProgress(0, 'Preparing extraction…', false);
+  title.textContent = 'Extracting NotebookLM Sources';
+};
+</script>
 </body>
 </html>

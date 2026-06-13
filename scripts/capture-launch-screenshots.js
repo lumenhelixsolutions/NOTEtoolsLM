@@ -30,6 +30,15 @@ async function main() {
     console.log('wrote', outPath);
   }
 
+  const demoUrl = `file:///${path.join(ROOT, 'docs', 'assets', 'screenshots', 'sources-demo.html').replace(/\\/g, '/')}`;
+  await page.setViewportSize({ width: 800, height: 520 });
+  await page.goto(demoUrl, { waitUntil: 'networkidle' });
+  await page.evaluate((tick) => window.__demoTick(tick), 55);
+  await page.waitForTimeout(300);
+  const sourcesPath = path.join(OUT, '04-sources-export.png');
+  await page.screenshot({ path: sourcesPath, fullPage: false });
+  console.log('wrote', sourcesPath);
+
   await browser.close();
 }
 

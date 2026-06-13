@@ -13,6 +13,8 @@
     "ci": "npm run lint && npm run test",
     "generate:icons": "node scripts/generate-icons.js",
     "capture:screenshots": "node scripts/capture-launch-screenshots.js",
+    "capture:demo": "node scripts/capture-demo-gif.js",
+    "capture:launch": "npm run capture:screenshots && npm run capture:demo",
     "package:extension": "node scripts/generate-icons.js && node scripts/package-extension.js",
     "build": "npm run package:extension",
     "build:firefox": "node scripts/build-firefox.js",

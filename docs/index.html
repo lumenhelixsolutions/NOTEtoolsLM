@@ -25,6 +25,7 @@
       NOTEtoolsLM
     </a>
     <div class="nav-links">
+      <a href="#demo">Demo</a>
       <a href="#features">Features</a>
       <a href="#how">How it works</a>
       <a href="install.html">Install</a>
@@ -45,6 +46,20 @@
   </div>
   <p class="hero-note">Chrome Web Store listing coming soon · Developer install available now</p>
 </header>
+
+<section id="demo" class="demo-section">
+  <div class="container">
+    <h2 class="section-title">See it in action</h2>
+    <p class="section-sub">Extract every NotebookLM source to Markdown — browse, download, or ZIP — without leaving the browser.</p>
+    <div class="demo-frame">
+      <video class="demo-media" autoplay loop muted playsinline width="800" height="520" poster="assets/demo.gif">
+        <source src="assets/demo.webm" type="video/webm">
+      </video>
+      <img class="demo-media demo-fallback" src="assets/demo.gif" alt="NOTEtoolsLM Sources tab extracting notebook sources to Markdown with live progress" width="800" height="520" loading="eager">
+    </div>
+    <p class="demo-caption">Sources export · side panel · local vault · all user-triggered</p>
+  </div>
+</section>
 
 <section id="features">
   <div class="container">
@@ -151,5 +166,17 @@
   <p style="margin-top:8px;">Not affiliated with Google or NotebookLM.</p>
 </footer>
 
+<script>
+(function () {
+  var frame = document.querySelector('.demo-frame');
+  var video = frame && frame.querySelector('video');
+  if (!frame || !video) return;
+  if (!video.canPlayType('video/webm')) {
+    frame.classList.add('no-video');
+    return;
+  }
+  video.addEventListener('error', function () { frame.classList.add('no-video'); });
+})();
+</script>
 </body>
 </html>
